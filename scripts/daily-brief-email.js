@@ -24,7 +24,9 @@ import { fetchWatchlistNews } from "../src/core/news.js";
 // ── Modus erkennen ───────────────────────────────────────────────────────────
 
 const modeArg = process.argv.find((a) => a.startsWith("--mode="));
-const MODE = modeArg ? modeArg.split("=")[1] : (new Date().getHours() < 12 ? "morning" : "daily");
+// Einmaliger Versand um 16:00 Uhr — kein Morgen-Modus mehr.
+// --mode=ob-update bleibt für den 17:30-Retry (Opening Bell Nachlieferung).
+const MODE = modeArg ? modeArg.split("=")[1] : "daily";
 
 const OB_STATE_FILE = "/tmp/.brief-ob-state.json";
 
@@ -1165,21 +1167,20 @@ function formatHtml(data, scanData, marketData, obData, calData, mode = "daily",
 <body><div class="wrap">
 
   <div class="card">
+    <h1>🌍 Markt-Regime</h1>
+    <p class="sub">${new Date(data.generated_at).toLocaleDateString("de-DE", { weekday:"long", day:"2-digit", month:"long", year:"numeric" })} &nbsp;·&nbsp; ${new Date(data.generated_at).toLocaleTimeString("de-DE")} &nbsp;·&nbsp; 📈 Briefing</p>
+    ${formatMarketHtml(marketData)}
+    ${formatOpeningBellHtml(obData)}
+  </div>
+
+  <div class="card">
     <h2>📅 Wochenkalender</h2>
     <p class="sub" style="margin-bottom:10px">KW ab ${calData?.week_label ?? ""} · Wichtige Makro-Ereignisse &amp; Watchlist-Earnings</p>
     ${formatCalendarHtml(calData)}
   </div>
 
   <div class="card">
-    <h1>🌍 Markt-Regime</h1>
-    <p class="sub">${new Date(data.generated_at).toLocaleDateString("de-DE", { weekday:"long", day:"2-digit", month:"long", year:"numeric" })} &nbsp;·&nbsp; ${new Date(data.generated_at).toLocaleTimeString("de-DE")} &nbsp;·&nbsp; ${mode === "morning" ? "🌅 Morgen-Briefing" : "📈 Daily Briefing"}</p>
-    ${formatMarketHtml(marketData)}
-    ${mode === "morning" ? formatPreMarketHtml(marketData?.premarket) : ""}
-    ${formatOpeningBellHtml(obData)}
-  </div>
-
-  <div class="card">
-    <h1>📈 ${mode === "morning" ? "Morgen-Briefing" : "Daily Briefing"} – Watchlist (CANSLIM)</h1>
+    <h1>📈 Briefing – Watchlist (CANSLIM)</h1>
     <p class="sub">Watchlist: <strong>${data.watchlist_name || "–"}</strong> &nbsp;·&nbsp; ${(data.symbols_scanned || []).length} Symbole
     ${stage2Info ? ` &nbsp;·&nbsp; <span style="font-weight:700;color:${stage2Info.pct >= 70 ? "#16a34a" : stage2Info.pct >= 40 ? "#d97706" : "#dc2626"}">Stage-2-Health: ${stage2Info.count}/${stage2Info.total} (${stage2Info.pct}%)</span>` : ""}
     </p>
@@ -1245,9 +1246,7 @@ async function sendEmail(html, count, regime, mode = "daily") {
   });
 
   const regimeShort = regime ? ` · ${regime.color} ${regime.label}` : "";
-  const prefix = mode === "morning" ? "🌅 Morgen-Briefing"
-               : mode === "ob-update" ? "🔄 Opening Bell Update"
-               : "📈 Daily Briefing";
+  const prefix = mode === "ob-update" ? "🔄 Opening Bell Update" : "📈 Briefing";
 
   await transporter.sendMail({
     from: `"TradingView Brief" <${GMAIL_USER}>`,
