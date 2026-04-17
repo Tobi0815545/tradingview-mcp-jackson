@@ -952,32 +952,41 @@ function formatCalendarHtml(calData) {
       ${isToday ? "▸ " : ""}${weekday}${isToday ? " <span style='color:#6b7280;font-weight:400;font-size:10px'>(heute)</span>" : ""}
     </div>`;
 
-    const evRows = dayEvents.map((e) => {
-      // Show Act. vs. Exp. side-by-side if both available; else whichever is present
-      let val = "";
+    // ── Makro-Events als Badges (analog zu Earnings) ────────────────────────────
+    const macroBadges = dayEvents.map((e) => {
+      let valHtml = "";
       if (e.actual && e.forecast) {
-        // Compare direction for color (numeric only)
         const aNum = parseFloat(String(e.actual).replace(",", "."));
         const fNum = parseFloat(String(e.forecast).replace(",", "."));
         const beat = !isNaN(aNum) && !isNaN(fNum) ? aNum > fNum : null;
-        const col  = beat === null ? "#1d4ed8" : beat ? "#16a34a" : "#dc2626";
-        val = `<strong style="color:${col}">${e.actual}${e.unit}</strong>` +
-              ` <span style="color:#9ca3af;font-size:10px">vs. ${e.forecast}${e.unit}</span>`;
+        const bg   = beat === null ? "#eff6ff"   : beat ? "#f0fdf4" : "#fef2f2";
+        const bc   = beat === null ? "#bfdbfe"   : beat ? "#bbf7d0" : "#fecaca";
+        const col  = beat === null ? "#1d4ed8"   : beat ? "#16a34a" : "#dc2626";
+        const valTxt = `<strong style="color:${col}">${e.actual}${e.unit}</strong>`
+          + ` <span style="color:#9ca3af;font-weight:400">vs. ${e.forecast}${e.unit}</span>`;
+        return `<div style="display:inline-flex;align-items:center;gap:5px;background:${bg};border:1px solid ${bc};border-radius:5px;padding:3px 8px;margin:2px;font-size:11px;font-weight:700">
+          <span>${e.flag} ${e.time !== "–" ? `<span style="color:#9ca3af;font-weight:400;font-size:10px">${e.time}</span> ` : ""}</span>
+          <span style="font-weight:600;color:#374151;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.event}">${e.event}</span>
+          <span style="white-space:nowrap">${valTxt}</span>
+        </div>`;
       } else if (e.actual) {
-        val = `<strong style="color:#1d4ed8">${e.actual}${e.unit}</strong>`;
-      } else if (e.forecast) {
-        val = `<span style="color:#6b7280">${e.forecast}${e.unit} erw.</span>`;
+        return `<div style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:3px 8px;margin:2px;font-size:11px;font-weight:700">
+          <span>${e.flag}</span>
+          <span style="font-weight:600;color:#374151;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.event}</span>
+          <strong style="color:#1d4ed8">${e.actual}${e.unit}</strong>
+        </div>`;
+      } else {
+        // Nur Erwartungswert (noch nicht veröffentlicht)
+        const timeStr = e.time !== "–" ? `<span style="color:#9ca3af;font-weight:400">${e.time}</span> ` : "";
+        const forecastStr = e.forecast ? ` · <span style="color:#6b7280">${e.forecast}${e.unit} erw.</span>` : "";
+        return `<div style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:3px 8px;margin:2px;font-size:11px">
+          <span>${e.flag} ${timeStr}<span style="color:#374151;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.event}${forecastStr}</span></span>
+        </div>`;
       }
-      return `<div style="display:flex;gap:6px;align-items:baseline;padding:2px 0;font-size:11px">
-        ${impDot(e.importance)}
-        <span style="color:#9ca3af;white-space:nowrap;min-width:36px">${e.time}</span>
-        <span style="color:#374151;flex:1">${e.flag} ${e.event}</span>
-        ${val ? `<span style="white-space:nowrap">${val}</span>` : ""}
-      </div>`;
     }).join("");
 
+    // ── Earnings Badges ──────────────────────────────────────────────────────────
     const earningBadges = dayEarnings.map((e) => {
-      // Nach Release: Act vs Exp mit Beat/Miss-Farbe anzeigen
       if (e.released && e.eps_actual != null) {
         const aNum = parseFloat(String(e.eps_actual).replace(",", "."));
         const fNum = e.eps_estimate != null ? parseFloat(String(e.eps_estimate).replace(",", ".")) : NaN;
@@ -995,10 +1004,18 @@ function formatCalendarHtml(calData) {
       </span>`;
     }).join("");
 
+    const macroSection = macroBadges ? `
+      <div style="font-size:9px;text-transform:uppercase;color:#6b7280;letter-spacing:.06em;font-weight:700;margin-bottom:3px;margin-top:2px">📊 Makro-Daten</div>
+      <div style="line-height:1.8">${macroBadges}</div>` : "";
+
+    const earningsSection = earningBadges ? `
+      <div style="font-size:9px;text-transform:uppercase;color:#6b7280;letter-spacing:.06em;font-weight:700;margin-top:${macroBadges ? "6px" : "2px"};margin-bottom:3px">📣 Earnings</div>
+      <div>${earningBadges}</div>` : "";
+
     return `<div style="margin-bottom:10px;padding:8px 10px;border-radius:6px;background:${isToday ? "#f0f9ff" : "#fafafa"};border:1px solid ${isToday ? "#bae6fd" : "#f3f4f6"}">
       ${dayHeader}
-      ${evRows}
-      ${earningBadges ? `<div style="margin-top:4px">${earningBadges}</div>` : ""}
+      ${macroSection}
+      ${earningsSection}
     </div>`;
   });
 
