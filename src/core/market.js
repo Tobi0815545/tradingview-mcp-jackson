@@ -324,16 +324,26 @@ const SECTOR_ETFS = [
   { ticker: "XLB",  label: "Rohstoffe",    icon: "⛏" },
 ];
 
-// Berechnet Wochenperformance aus einem Yahoo-Chart-JSON (7d Range → garantiert 5 Handelstage)
+// Berechnet Wochen- und Tagesperformance aus einem Yahoo-Chart-JSON (7d Range → 5 Handelstage)
 function weekPerfFromJson(json) {
   const meta   = json?.chart?.result?.[0]?.meta ?? {};
   const closes = (json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []).filter((c) => c != null);
-  const perfW  = closes.length >= 2
+
+  // Wochenperformance: erster Close der Periode → letzter Close
+  const perfW = closes.length >= 2
     ? ((closes[closes.length - 1] - closes[0]) / closes[0]) * 100
     : null;
-  const price     = meta.regularMarketPrice ?? null;
-  const prevClose = meta.previousClose ?? null;
-  const perfD     = price && prevClose ? ((price - prevClose) / prevClose) * 100 : null;
+
+  // Tagesperformance: aktueller Preis vs. Vortages-Close
+  // Fallback-Kette: chartPreviousClose → previousClose → vorletzter Bar-Close
+  const price     = meta.regularMarketPrice ?? closes[closes.length - 1] ?? null;
+  const prevClose = meta.chartPreviousClose
+    ?? meta.previousClose
+    ?? (closes.length >= 2 ? closes[closes.length - 2] : null);
+  const perfD = price != null && prevClose != null && prevClose !== 0
+    ? ((price - prevClose) / prevClose) * 100
+    : null;
+
   return { price, perf_week: perfW, perf_day: perfD };
 }
 

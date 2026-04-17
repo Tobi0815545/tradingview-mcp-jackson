@@ -254,21 +254,20 @@ function formatSectorHeatmapHtml(sectors) {
   // Bereits von fetchSectorPerformance() absteigend sortiert
   const sorted = sectors;
 
-  // Farb-Mapping für Heatmap-Zellen
+  // Farb-Mapping für Heatmap-Zellen — 7 Stufen je Seite für klare Abstufung
   const heatColor = (pct) => {
     if (pct == null) return { bg: "#f9fafb", text: "#6b7280" };
-    if (pct >= 4)   return { bg: "#14532d", text: "#fff" };
-    if (pct >= 2)   return { bg: "#16a34a", text: "#fff" };
-    if (pct >= 0.5) return { bg: "#86efac", text: "#14532d" };
-    if (pct >= -0.5)return { bg: "#f3f4f6", text: "#374151" };
-    if (pct >= -2)  return { bg: "#fca5a5", text: "#7f1d1d" };
-    if (pct >= -4)  return { bg: "#dc2626", text: "#fff" };
-    return          { bg: "#7f1d1d", text: "#fff" };
-  };
-
-  const cellStyle = (pct) => {
-    const { bg, text } = heatColor(pct);
-    return `background:${bg};color:${text}`;
+    if (pct >=  7)   return { bg: "#052e16", text: "#d1fae5" }; // extrem stark grün
+    if (pct >=  4)   return { bg: "#14532d", text: "#bbf7d0" }; // sehr stark grün
+    if (pct >=  2)   return { bg: "#15803d", text: "#fff"    }; // stark grün
+    if (pct >=  1)   return { bg: "#16a34a", text: "#fff"    }; // mittel grün
+    if (pct >=  0.3) return { bg: "#86efac", text: "#14532d" }; // leicht grün
+    if (pct > -0.3)  return { bg: "#f3f4f6", text: "#374151" }; // neutral
+    if (pct >= -1)   return { bg: "#fecaca", text: "#7f1d1d" }; // leicht rot
+    if (pct >= -2)   return { bg: "#f87171", text: "#fff"    }; // mittel rot
+    if (pct >= -4)   return { bg: "#dc2626", text: "#fff"    }; // stark rot
+    if (pct >= -7)   return { bg: "#991b1b", text: "#fff"    }; // sehr stark rot
+    return                   { bg: "#7f1d1d", text: "#fecaca" }; // extrem rot
   };
 
   // 2 Reihen: max 6 Sektoren pro Zeile — kein horizontaler Überlauf
@@ -277,23 +276,41 @@ function formatSectorHeatmapHtml(sectors) {
 
   const renderRow = (items) => items.map((s) => {
     const wStr = s.perf_week != null ? `${s.perf_week >= 0 ? "+" : ""}${s.perf_week.toFixed(1)}%` : "–";
-    const dStr = s.perf_day  != null ? `${s.perf_day  >= 0 ? "+" : ""}${s.perf_day.toFixed(1)}%`  : "–";
+    const dStr = s.perf_day  != null ? `${s.perf_day  >= 0 ? "+" : ""}${s.perf_day.toFixed(1)}%`  : null;
     const { bg, text } = heatColor(s.perf_week);
-    return `<td style="padding:4px 2px;text-align:center;width:${(100/6).toFixed(2)}%">
-      <div style="background:${bg};color:${text};border-radius:5px;padding:4px 2px">
-        <div style="font-size:13px">${s.icon}</div>
-        <div style="font-size:8px;margin-bottom:2px;white-space:nowrap;opacity:.85">${s.label}</div>
-        <div style="font-size:11px;font-weight:700">${wStr}</div>
-        <div style="font-size:9px;opacity:.75">${dStr}</div>
+    // Tages-Farbe für kleinen Badge
+    const dayColor = s.perf_day == null ? "#9ca3af"
+      : s.perf_day >= 0.3 ? "#16a34a"
+      : s.perf_day <= -0.3 ? "#dc2626"
+      : "#6b7280";
+    return `<td style="padding:3px 2px;text-align:center;width:${(100/6).toFixed(2)}%">
+      <div style="background:${bg};color:${text};border-radius:5px;padding:5px 2px 4px">
+        <div style="font-size:12px">${s.icon}</div>
+        <div style="font-size:7.5px;margin-bottom:2px;white-space:nowrap;opacity:.85;font-weight:600">${s.label}</div>
+        <div style="font-size:11px;font-weight:800;line-height:1.2">${wStr}</div>
+        ${dStr != null
+          ? `<div style="font-size:9px;font-weight:600;color:${s.perf_week != null && Math.abs(s.perf_week) < 3 ? dayColor : "inherit"};opacity:.8;line-height:1.3">${dStr}</div>`
+          : `<div style="font-size:8px;opacity:.4;line-height:1.3">Tag –</div>`}
       </div>
     </td>`;
   }).join("");
 
   return `
   <div style="margin-top:16px;padding-top:14px;border-top:1px solid #e5e7eb">
-    <div style="font-size:10px;text-transform:uppercase;color:#9ca3af;letter-spacing:.05em;font-weight:600;margin-bottom:6px">
-      🗺 Sektor-Performance (S&amp;P 500) <span style="font-weight:400;color:#d1d5db">· Woche / Tag</span>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+      <div style="font-size:10px;text-transform:uppercase;color:#9ca3af;letter-spacing:.05em;font-weight:600">
+        🗺 Sektor-Performance (S&amp;P 500)
+      </div>
+      <div style="display:flex;gap:5px;font-size:9px;align-items:center">
+        <span style="background:#14532d;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700">&gt;4%</span>
+        <span style="background:#16a34a;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700">1–4%</span>
+        <span style="background:#86efac;color:#14532d;border-radius:3px;padding:1px 5px;font-weight:700">0–1%</span>
+        <span style="background:#f3f4f6;color:#374151;border-radius:3px;padding:1px 5px;font-weight:700">±0</span>
+        <span style="background:#f87171;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700">-1–4%</span>
+        <span style="background:#991b1b;color:#fff;border-radius:3px;padding:1px 5px;font-weight:700">&lt;-4%</span>
+      </div>
     </div>
+    <div style="font-size:9px;color:#9ca3af;margin-bottom:5px">Groß = Woche &nbsp;·&nbsp; Klein = Heute</div>
     <table style="width:100%;border-collapse:separate;border-spacing:2px 3px">
       <tr>${renderRow(row1)}</tr>
       ${row2.length ? `<tr>${renderRow(row2)}</tr>` : ""}
@@ -626,13 +643,23 @@ function formatMarketHtml(market) {
     </tr>`;
   }).join("\n");
 
-  const vixDisplay = vix?.close !== null ? vix.close.toFixed(1) : "–";
+  const vixDisplay = vix?.close != null ? vix.close.toFixed(1) : "–";
   const vixColor   = !vix?.close ? "#6b7280"
     : vix.close < 15 ? "#16a34a"
     : vix.close < 25 ? "#d97706"
     : vix.close < 35 ? "#dc2626"
     : "#7f1d1d";
-  const vixLabel   = !vix?.close ? "" : vix.close < 15 ? "Niedrig" : vix.close < 25 ? "Erhöht" : vix.close < 35 ? "Hoch" : "Extrem";
+
+  // VIX-Zonen als Chips: aktive Zone hervorgehoben, inaktive gedimmt
+  const vixZones = [
+    { label: "😊 Gier",   range: "< 15",   active: vix?.close < 15,               bg: "#d1fae5", border: "#34d399", text: "#065f46" },
+    { label: "😐 Normal", range: "15–25",  active: vix?.close >= 15 && vix?.close < 25, bg: "#fef9c3", border: "#fbbf24", text: "#854d0e" },
+    { label: "😰 Angst",  range: "25–35",  active: vix?.close >= 25 && vix?.close < 35, bg: "#fed7aa", border: "#f97316", text: "#9a3412" },
+    { label: "🚨 Panik",  range: "> 35",   active: vix?.close >= 35,              bg: "#fecaca", border: "#ef4444", text: "#7f1d1d" },
+  ];
+  const vixChips = vixZones.map((z) =>
+    `<span style="display:inline-block;background:${z.bg};color:${z.text};border:${z.active ? `2px solid ${z.border}` : "2px solid transparent"};border-radius:4px;padding:2px 6px;font-size:10px;font-weight:${z.active ? "800" : "600"};white-space:nowrap;opacity:${z.active ? "1" : ".55"}">${z.label} <span style="font-weight:400">${z.range}</span></span>`
+  ).join("&nbsp;");
 
   return `
   <div style="background:${col.bg};border:1.5px solid ${col.border};border-radius:8px;padding:16px 18px;margin-bottom:16px">
@@ -659,9 +686,9 @@ function formatMarketHtml(market) {
     </tr></thead>
     <tbody>${indexRows}
       <tr style="border-top:1px solid #e5e7eb">
-        <td style="padding:6px 8px;font-weight:700;font-size:13px">😨 VIX</td>
-        <td style="padding:6px 8px;text-align:right;font-weight:800;font-size:14px;color:${vixColor}">${vixDisplay}</td>
-        <td colspan="4" style="padding:6px 8px;font-size:11px;color:${vixColor};font-weight:600">${vixLabel} · &lt;15 Gier · 15–25 Normal · 25–35 Angst · &gt;35 Panik</td>
+        <td style="padding:6px 8px;font-weight:700;font-size:13px;white-space:nowrap">😨 VIX</td>
+        <td style="padding:6px 8px;text-align:right;font-weight:800;font-size:14px;color:${vixColor};white-space:nowrap">${vixDisplay}</td>
+        <td colspan="4" style="padding:5px 8px">${vixChips}</td>
       </tr>
     </tbody>
   </table>
