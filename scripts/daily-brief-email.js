@@ -688,7 +688,7 @@ function formatMarketHtml(market) {
     </tr></thead>
     <tbody>${indexRows}
       <tr style="border-top:1px solid #e5e7eb">
-        <td style="padding:6px 8px;font-weight:700;font-size:13px;white-space:nowrap">😨 VIX</td>
+        <td style="padding:6px 8px;font-weight:700;font-size:13px;white-space:nowrap">${vixZones.find((z) => z.active)?.label.split(" ")[0] ?? "😨"} VIX</td>
         <td style="padding:6px 8px;text-align:right;font-weight:800;font-size:14px;color:${vixColor};white-space:nowrap">${vixDisplay}</td>
         <td colspan="4" style="padding:5px 8px">${vixChips}</td>
       </tr>
@@ -925,6 +925,17 @@ function calcStage2Info(symbolsScanned, stage2Map) {
   return total > 0 ? { count, total, pct: Math.round((count / total) * 100) } : null;
 }
 
+// Rundet einen Zahlen-String auf max. 2 Dezimalstellen; nicht-numerische Strings bleiben unverändert
+function fmtCalNum(val) {
+  if (val == null) return null;
+  const s = String(val).trim();
+  const n = parseFloat(s.replace(",", "."));
+  if (isNaN(n)) return s;                    // z.B. "N/A" oder leerer String
+  // Nur runden wenn mehr als 2 Dezimalstellen vorhanden
+  const decimals = (s.split(".")[1] ?? s.split(",")[1] ?? "").length;
+  return decimals > 2 ? n.toFixed(2) : s;
+}
+
 function formatCalendarHtml(calData) {
   if (!calData) return "";
   const { events = [], earnings = [], week_label = "" } = calData;
@@ -956,31 +967,32 @@ function formatCalendarHtml(calData) {
 
     // ── Makro-Events als Badges (analog zu Earnings) ────────────────────────────
     const macroBadges = dayEvents.map((e) => {
-      let valHtml = "";
-      if (e.actual && e.forecast) {
+      const act = fmtCalNum(e.actual);
+      const fct = fmtCalNum(e.forecast);
+      if (act && fct) {
         const aNum = parseFloat(String(e.actual).replace(",", "."));
         const fNum = parseFloat(String(e.forecast).replace(",", "."));
         const beat = !isNaN(aNum) && !isNaN(fNum) ? aNum > fNum : null;
         const bg   = beat === null ? "#eff6ff"   : beat ? "#f0fdf4" : "#fef2f2";
         const bc   = beat === null ? "#bfdbfe"   : beat ? "#bbf7d0" : "#fecaca";
         const col  = beat === null ? "#1d4ed8"   : beat ? "#16a34a" : "#dc2626";
-        const valTxt = `<strong style="color:${col}">${e.actual}${e.unit}</strong>`
-          + ` <span style="color:#9ca3af;font-weight:400">vs. ${e.forecast}${e.unit}</span>`;
+        const valTxt = `<strong style="color:${col}">${act}${e.unit}</strong>`
+          + ` <span style="color:#9ca3af;font-weight:400">vs. ${fct}${e.unit}</span>`;
         return `<div style="display:inline-flex;align-items:center;gap:5px;background:${bg};border:1px solid ${bc};border-radius:5px;padding:3px 8px;margin:2px;font-size:11px;font-weight:700">
           <span>${e.flag} ${e.time !== "–" ? `<span style="color:#9ca3af;font-weight:400;font-size:10px">${e.time}</span> ` : ""}</span>
           <span style="font-weight:600;color:#374151;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${e.event}">${e.event}</span>
           <span style="white-space:nowrap">${valTxt}</span>
         </div>`;
-      } else if (e.actual) {
+      } else if (act) {
         return `<div style="display:inline-flex;align-items:center;gap:5px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:5px;padding:3px 8px;margin:2px;font-size:11px;font-weight:700">
           <span>${e.flag}</span>
           <span style="font-weight:600;color:#374151;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.event}</span>
-          <strong style="color:#1d4ed8">${e.actual}${e.unit}</strong>
+          <strong style="color:#1d4ed8">${act}${e.unit}</strong>
         </div>`;
       } else {
         // Nur Erwartungswert (noch nicht veröffentlicht)
         const timeStr = e.time !== "–" ? `<span style="color:#9ca3af;font-weight:400">${e.time}</span> ` : "";
-        const forecastStr = e.forecast ? ` · <span style="color:#6b7280">${e.forecast}${e.unit} erw.</span>` : "";
+        const forecastStr = fct ? ` · <span style="color:#6b7280">${fct}${e.unit} erw.</span>` : "";
         return `<div style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:5px;padding:3px 8px;margin:2px;font-size:11px">
           <span>${e.flag} ${timeStr}<span style="color:#374151;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${e.event}${forecastStr}</span></span>
         </div>`;
@@ -1205,7 +1217,7 @@ function formatHtml(data, scanData, marketData, obData, calData, mode = "daily",
         <th style="text-align:right">60T %</th>
         <th style="text-align:right">MACD-H</th>
         <th style="text-align:right">Volumen</th>
-        <th style="text-align:right">RSI (14) ⟆</th>
+        <th style="text-align:right">RSI (14)</th>
         <th style="text-align:center">⭐</th>
       </tr></thead>
       <tbody>${rows}</tbody>
