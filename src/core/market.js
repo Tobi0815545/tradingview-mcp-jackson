@@ -9,11 +9,20 @@ const TV_SCANNER = "https://scanner.tradingview.com";
 // ── Zu überwachende Symbole ──────────────────────────────────────────────────
 
 const WATCH_SYMBOLS = [
-  { symbol: "AMEX:SPY",    label: "S&P 500",     short: "SPY",  flag: "🇺🇸", type: "index" },
-  { symbol: "NASDAQ:QQQ",  label: "Nasdaq 100",  short: "QQQ",  flag: "🇺🇸", type: "index" },
-  { symbol: "AMEX:IWM",    label: "Russell 2000", short: "IWM", flag: "🇺🇸", type: "index" },
-  { symbol: "XETR:DAX",    label: "DAX",          short: "DAX", flag: "🇩🇪", type: "index" },
-  { symbol: "TVC:VIX",     label: "VIX",          short: "VIX", flag: "",    type: "vix"   },
+  // USA
+  { symbol: "TVC:DJI",     label: "Dow Jones",    short: "DJI",    flag: "🇺🇸", type: "index" },
+  { symbol: "CBOE:SPX",    label: "S&P 500",      short: "SPX",    flag: "🇺🇸", type: "index" },
+  { symbol: "NASDAQ:NDX",  label: "Nasdaq 100",   short: "NDX",    flag: "🇺🇸", type: "index" },
+  { symbol: "TVC:RUT",     label: "Russell 2000", short: "RUT",    flag: "🇺🇸", type: "index" },
+  // Europa
+  { symbol: "XETR:DAX",    label: "DAX",          short: "DAX",    flag: "🇩🇪", type: "index" },
+  { symbol: "TVC:SX5E",    label: "Euro Stoxx 50",short: "SX5E",   flag: "🇪🇺", type: "index" },
+  // Japan
+  { symbol: "TVC:NI225",   label: "Nikkei 225",   short: "NI225",  flag: "🇯🇵", type: "index" },
+  // China
+  { symbol: "TVC:HSI",     label: "Hang Seng",    short: "HSI",    flag: "🇨🇳", type: "index" },
+  // Volatilität
+  { symbol: "TVC:VIX",     label: "VIX",          short: "VIX",    flag: "",    type: "vix"   },
 ];
 
 // Spalten: close, EMA50, SMA150, SMA200, change%, Perf.1M, Perf.3M, RSI
@@ -84,11 +93,14 @@ async function fetchIndexData() {
 // ── Regime-Berechnung ────────────────────────────────────────────────────────
 
 function calcRegime(allData) {
-  const spy = allData.find((d) => d.short === "SPY");
-  const qqq = allData.find((d) => d.short === "QQQ");
-  const iwm = allData.find((d) => d.short === "IWM");
-  const dax = allData.find((d) => d.short === "DAX");
-  const vix = allData.find((d) => d.type  === "vix");
+  const spy   = allData.find((d) => d.short === "SPX");
+  const qqq   = allData.find((d) => d.short === "NDX");
+  const iwm   = allData.find((d) => d.short === "RUT");
+  const dax   = allData.find((d) => d.short === "DAX");
+  const sx5e  = allData.find((d) => d.short === "SX5E");
+  const ni225 = allData.find((d) => d.short === "NI225");
+  const hsi   = allData.find((d) => d.short === "HSI");
+  const vix   = allData.find((d) => d.type  === "vix");
 
   const vixLevel = vix?.close ?? null;
 
@@ -157,10 +169,13 @@ function calcRegime(allData) {
   return {
     signal, color, label, description, action, vixLevel,
     index_status: {
-      spy: maStatus(spy),
-      qqq: maStatus(qqq),
-      iwm: maStatus(iwm),
-      dax: maStatus(dax),
+      spx:   maStatus(spy),
+      ndx:   maStatus(qqq),
+      rut:   maStatus(iwm),
+      dax:   maStatus(dax),
+      sx5e:  maStatus(sx5e),
+      ni225: maStatus(ni225),
+      hsi:   maStatus(hsi),
     },
   };
 }
@@ -179,15 +194,29 @@ const VIX_YAHOO_SYMBOLS = [
 // Zentrale Yahoo Finance Chart-Funktion (ersetzt fetchYahooQuote + doppelte fetch-Logik)
 async function fetchYahooChart(encodedTicker, range = "1d", interval = "1d") {
   const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodedTicker}?interval=${interval}&range=${range}`;
-  const res = await fetch(url, {
-    headers: {
-      "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-      "Accept":     "application/json",
-    },
-    signal: AbortSignal.timeout(8_000),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return res.json();
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+          "Accept":     "application/json",
+        },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (res.status === 429 || res.status >= 500) {
+        lastErr = new Error(`HTTP ${res.status}`);
+        await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+        continue;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return res.json();
+    } catch (e) {
+      lastErr = e;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
 }
 
 async function fetchVixTermStructure() {
@@ -214,7 +243,7 @@ async function fetchVixTermStructure() {
       ? (short < long30 ? "contango" : "backwardation")
       : "unknown";
 
-    return { points, structure };
+    return { points, structure, fetched_at: new Date().toISOString() };
   } catch (err) {
     console.warn("⚠️  VIX Terminstruktur fehlgeschlagen:", err.message);
     return null;
@@ -263,6 +292,7 @@ async function fetchFearGreed() {
       prev_close:       Math.round(fg.previous_close ?? score),
       prev_1week:       Math.round(fg.previous_1_week ?? score),
       prev_1month:      Math.round(fg.previous_1_month ?? score),
+      fetched_at:       new Date().toISOString(),
     };
   } catch (err) {
     console.warn("⚠️  Fear & Greed fehlgeschlagen:", err.message);
@@ -324,22 +354,30 @@ const SECTOR_ETFS = [
   { ticker: "XLB",  label: "Rohstoffe",    icon: "⛏" },
 ];
 
-// Berechnet Wochen- und Tagesperformance aus einem Yahoo-Chart-JSON (7d Range → 5 Handelstage)
+// Berechnet Wochen- und Tagesperformance aus einem Yahoo-Chart-JSON (5d Range → exakt 5 Handelstage)
+//
+// WICHTIG zu chartPreviousClose vs. closes[]:
+//   chartPreviousClose = Close VOR dem gesamten Chart-Fenster (z.B. bei 5d = Close von vor 6 Handelstagen).
+//   Das ist NICHT "gestern" — für Tagesperformance daher closes[-2] verwenden!
+//
+//   closes[-1] = letzter Bar = heute (intraday) oder letzter vollständiger Close
+//   closes[-2] = gestiger Close (vorletzter Bar) → korrekte Basis für perf_day
+//   closes[0]  = ältester Bar der Periode → Basis für perf_week (= 5-Handelstage-Rolling)
 function weekPerfFromJson(json) {
   const meta   = json?.chart?.result?.[0]?.meta ?? {};
   const closes = (json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []).filter((c) => c != null);
 
-  // Wochenperformance: erster Close der Periode → letzter Close
+  // Wochenperformance: ältester Close der 5d-Periode → aktueller Preis (= 5-Handelstage-Rolling)
+  const price = meta.regularMarketPrice ?? closes[closes.length - 1] ?? null;
   const perfW = closes.length >= 2
-    ? ((closes[closes.length - 1] - closes[0]) / closes[0]) * 100
+    ? ((price - closes[0]) / closes[0]) * 100
     : null;
 
-  // Tagesperformance: aktueller Preis vs. Vortages-Close
-  // Fallback-Kette: chartPreviousClose → previousClose → vorletzter Bar-Close
-  const price     = meta.regularMarketPrice ?? closes[closes.length - 1] ?? null;
-  const prevClose = meta.chartPreviousClose
-    ?? meta.previousClose
-    ?? (closes.length >= 2 ? closes[closes.length - 2] : null);
+  // Tagesperformance: aktueller Preis vs. gestiger Close (= vorletzter Bar)
+  // closes[-2] = gestern, schlägt chartPreviousClose (= Close vor der gesamten Periode, NICHT gestern!)
+  const prevClose = closes.length >= 2
+    ? closes[closes.length - 2]
+    : null;
   const perfD = price != null && prevClose != null && prevClose !== 0
     ? ((price - prevClose) / prevClose) * 100
     : null;
@@ -351,7 +389,8 @@ export async function fetchSectorPerformance() {
   try {
     const results = await Promise.allSettled(
       SECTOR_ETFS.map(async (s) => {
-        const json = await fetchYahooChart(encodeURIComponent(s.ticker), "7d", "1d");
+        // "5d" statt "7d": liefert exakt 5 Handelstage → saubere 1-Woche-Rolling-Performance
+        const json = await fetchYahooChart(encodeURIComponent(s.ticker), "5d", "1d");
         return { ...s, ...weekPerfFromJson(json) };
       })
     );
@@ -368,7 +407,6 @@ export async function fetchSectorPerformance() {
 }
 
 // ── Wochen-Performance für beliebige Symbole ─────────────────────────────────
-// 7d Range statt 5d — stellt sicher dass 5 Handelstage vorhanden sind
 
 export async function fetchWeeklyPerformance(symbols = []) {
   if (!symbols.length) return new Map();
@@ -377,7 +415,7 @@ export async function fetchWeeklyPerformance(symbols = []) {
     symbols.map(async (sym) => {
       const ticker = sym.includes(":") ? sym.split(":").pop() : sym;
       try {
-        const json = await fetchYahooChart(encodeURIComponent(ticker), "7d", "1d");
+        const json = await fetchYahooChart(encodeURIComponent(ticker), "5d", "1d");
         const { perf_week } = weekPerfFromJson(json);
         if (perf_week != null) {
           result.set(sym, perf_week);
@@ -454,16 +492,167 @@ export async function fetchWatchlistRsi(symbols = []) {
   }
 }
 
+// ── Buffett-Indikator (Total Market Cap / BIP) ───────────────────────────────
+// Datenquelle: FRED öffentliche CSV-Endpoints (kein API-Key erforderlich)
+//   WILL5000INDFC = Wilshire 5000 Full Cap, in Mrd. USD (monatlich)
+//   GDP           = US-Nominal-BIP, in Mrd. USD, SAAR (quartalsweise)
+
+async function fetchBuffettIndicator() {
+  const parseFredAll = (csv) => {
+    const entries = [];
+    for (const line of csv.trim().split("\n").slice(1)) {
+      const parts = line.split(",");
+      const date  = (parts[0] ?? "").trim();
+      const n     = parseFloat((parts[1] ?? "").trim());
+      if (date && !isNaN(n) && n > 0) entries.push({ date, value: n });
+    }
+    return entries;
+  };
+
+  const fredFetch = async (id) => {
+    const res = await fetch(`https://fred.stlouisfed.org/graph/fredgraph.csv?id=${id}`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(12_000),
+    });
+    if (!res.ok) throw new Error(`FRED ${id} HTTP ${res.status}`);
+    return parseFredAll(await res.text());
+  };
+
+  const fredCsv = async (id) => {
+    const all = await fredFetch(id);
+    return all.length > 0 ? all[all.length - 1] : null;
+  };
+
+  // Marktkapitalisierung: W5000 Index (Yahoo, täglich) × Kalibrierungsfaktor (Fed Z.1, quartalsweise)
+  // Fed NCBEILQ027S = echte US-Aktienmarktkapitalisierung in Mio USD
+  // Faktor = Fed-Marktkapitalisierung / W5000-Index AM FED-STICHTAG (nicht heute!) → auf den
+  // heutigen W5000-Stand projiziert. Ohne historischen W5000-Wert am Stichtag würde sich der
+  // Faktor exakt herauskürzen (w5000Now × (fedMcap/w5000Now) = fedMcap) und der Indikator nie
+  // täglich aktualisieren, sondern immer nur den alten Fed-Quartalswert zurückgeben.
+  const fetchMcapCalibrated = async () => {
+    const fedMcap = await fredCsv("NCBEILQ027S");
+    if (!fedMcap?.value) throw new Error("Fed Z.1 Marktkapitalisierung nicht verfügbar");
+    const fedMcapBn = fedMcap.value / 1000;
+
+    // W5000-Historie holen (liefert sowohl "heute" als auch den Stand am Fed-Stichtag).
+    // WICHTIG: meta.regularMarketPrice ist für ^W5000 bei Yahoo unzuverlässig — liefert teils
+    // einen veralteten Snapshot (regularMarketTime kann Jahre zurückliegen), während
+    // chartPreviousClose/die Historie aktuell sind. Daher NICHT meta.regularMarketPrice nutzen,
+    // sondern den letzten Schlusskurs aus der Zeitreihe.
+    const w5000HistRes = await fetchYahooChart("%5EW5000", "1y", "1d");
+    const hist = w5000HistRes?.chart?.result?.[0];
+    const timestamps = hist?.timestamp ?? [];
+    const closes = hist?.indicators?.quote?.[0]?.close ?? [];
+    if (!timestamps.length) throw new Error("Keine W5000-Historie verfügbar");
+
+    let lastIdx = -1;
+    for (let i = timestamps.length - 1; i >= 0; i--) {
+      if (closes[i] != null) { lastIdx = i; break; }
+    }
+    if (lastIdx === -1) throw new Error("Kein gültiger W5000-Preis in der Historie");
+    const w5000Now = closes[lastIdx];
+    const today = new Date().toISOString().split("T")[0];
+
+    const fedDateMs = new Date(fedMcap.date).getTime();
+    let w5000AtFedDate = null, bestDiff = Infinity;
+    for (let i = 0; i < timestamps.length; i++) {
+      if (closes[i] == null) continue;
+      const diff = Math.abs(timestamps[i] * 1000 - fedDateMs);
+      if (diff < bestDiff) { bestDiff = diff; w5000AtFedDate = closes[i]; }
+    }
+    // Nur akzeptieren, wenn der gefundene Handelstag höchstens 10 Tage vom Fed-Stichtag abweicht
+    if (w5000AtFedDate == null || bestDiff > 10 * 86400000) {
+      throw new Error("Kein W5000-Kurs am Fed-Stichtag gefunden — Kalibrierung nicht möglich");
+    }
+
+    const factor = fedMcapBn / w5000AtFedDate;
+    const mcapBn = w5000Now * factor;
+    return { date: today, value: mcapBn, source: `W5000 × ${factor.toFixed(3)} (Fed Z.1 ${fedMcap.date})` };
+  };
+
+  try {
+    const [mcap, gdp, gdpNow] = await Promise.all([
+      fetchMcapCalibrated(),
+      fredCsv("GDP"),
+      fredCsv("GDPNOW").catch(() => null),
+    ]);
+
+    if (!mcap || !gdp) throw new Error("Keine gültigen Werte");
+
+    let gdpEstimate = gdp.value;
+    let gdpDate = gdp.date;
+    if (gdpNow?.value != null) {
+      const quartersSinceGdp = Math.max(0, Math.round((Date.now() - new Date(gdp.date).getTime()) / (90 * 86400000)));
+      if (quartersSinceGdp > 0) {
+        gdpEstimate = gdp.value * (1 + (gdpNow.value / 100) / 4 * quartersSinceGdp);
+        gdpDate = `${gdp.date} + GDPNow ${gdpNow.value.toFixed(1)}%`;
+      }
+    }
+
+    const ratio = (mcap.value / gdpEstimate) * 100;
+
+    // Dynamische Trendlinie: exponentielle Regression auf historische MCap/GDP-Ratios
+    // SD auf absoluten Residuen (Prozentpunkte), konsistent mit currentmarketvaluation.com
+    let trend = null, sdAbs = null, sdFromTrend = null;
+    try {
+      const [mcapHist, gdpHist] = await Promise.all([
+        fredFetch("NCBEILQ027S"),
+        fredFetch("GDP"),
+      ]);
+      const gdpByDate = new Map(gdpHist.map(e => [e.date, e.value]));
+      const T0 = new Date("1950-01-01").getTime();
+      const MS_PER_YEAR = 365.25 * 86400000;
+      const histRatios = [];
+      for (const e of mcapHist) {
+        const g = gdpByDate.get(e.date);
+        if (!g) continue;
+        const r = (e.value / 1000) / g * 100;
+        histRatios.push({ t: (new Date(e.date).getTime() - T0) / MS_PER_YEAR, ratio: r, lnR: Math.log(r) });
+      }
+      if (histRatios.length > 20) {
+        const n = histRatios.length;
+        const sumT = histRatios.reduce((s, r) => s + r.t, 0);
+        const sumLn = histRatios.reduce((s, r) => s + r.lnR, 0);
+        const sumTLn = histRatios.reduce((s, r) => s + r.t * r.lnR, 0);
+        const sumT2 = histRatios.reduce((s, r) => s + r.t * r.t, 0);
+        const b = (n * sumTLn - sumT * sumLn) / (n * sumT2 - sumT * sumT);
+        const a = (sumLn - b * sumT) / n;
+        const tNow = (Date.now() - T0) / MS_PER_YEAR;
+        trend = Math.exp(a + b * tNow);
+        const absResiduals = histRatios.map(r => r.ratio - Math.exp(a + b * r.t));
+        sdAbs = Math.sqrt(absResiduals.reduce((s, v) => s + v * v, 0) / (n - 2));
+        sdFromTrend = (ratio - trend) / sdAbs;
+      }
+    } catch {}
+
+    return {
+      ratio,
+      mcap_bn:   mcap.value,
+      gdp_bn:    gdpEstimate,
+      mcap_date: mcap.date,
+      mcap_source: mcap.source,
+      gdp_date:  gdpDate,
+      trend:     trend ? +trend.toFixed(1) : null,
+      sd_abs:    sdAbs ? +sdAbs.toFixed(1) : null,
+      sd_from_trend: sdFromTrend ? +sdFromTrend.toFixed(2) : null,
+    };
+  } catch (err) {
+    console.warn("⚠️  Buffett-Indikator fehlgeschlagen:", err.message);
+    return null;
+  }
+}
+
 // ── Public API ───────────────────────────────────────────────────────────────
 
 export async function runMarketCheck() {
   try {
-    const [allData, vixTs, fearGreed, premarket, sectors] = await Promise.all([
+    const [allData, vixTs, fearGreed, premarket, sectors, buffett] = await Promise.all([
       fetchIndexData(),
       fetchVixTermStructure(),
       fetchFearGreed(),
       fetchPreMarketData(),
       fetchSectorPerformance(),
+      fetchBuffettIndicator(),
     ]);
 
     const indices = allData.filter((d) => d.type === "index");
@@ -479,7 +668,8 @@ export async function runMarketCheck() {
       vix_term_structure: vixTs,
       fear_greed:         fearGreed,
       premarket,
-      sectors,
+      sectors:            { items: sectors, fetched_at: new Date().toISOString() },
+      buffett,
     };
   } catch (err) {
     return {
@@ -492,7 +682,7 @@ export async function runMarketCheck() {
         description: `Marktdaten konnten nicht abgerufen werden: ${err.message}`,
         action:      "Manuelle Marktprüfung erforderlich",
         vixLevel:    null,
-        index_status: { spy: "?", qqq: "?", iwm: "?", dax: "?" },
+        index_status: { spx: "?", ndx: "?", rut: "?", dax: "?", sx5e: "?", ni225: "?", hsi: "?" },
       },
     };
   }

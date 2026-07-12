@@ -9,7 +9,14 @@
 
 const TV_CALENDAR        = "https://economic-calendar.tradingview.com/events";
 const CALENDAR_COUNTRIES = ["US", "EU", "DE", "FR", "GB", "JP", "CN", "CA", "CH"];
-const MIN_IMPORTANCE_TV  = 3;   // Fallback: nur High-Impact
+// TradingView nutzt Skala -1 (niedrig) / 0 (mittel) / 1 (hoch) — NICHT 1-3!
+const MIN_IMPORTANCE_TV  = 1;   // HIGH-Impact (TV-Skala: 1 = hoch)
+
+// MED-Events (imp=0) die trotzdem relevant sind — via Keyword-Whitelist
+const MED_WHITELIST = /PMI|Purchasing Manager|Jobless Claims|Unemployment Claims|Consumer Sentiment|Consumer Confidence|Michigan|Lagarde|Powell|Waller|Fed Chair|ECB President|Inflation|CPI|PCE|GDP|Retail Sales|Nonfarm|NFP|Payroll|ISM|Trade Balance|Current Account|Housing Starts|Building Permits|Factory Orders|Industrial Production/i;
+
+// MED-Events die rausgefilter werden sollen (Rauschen)
+const MED_NOISE = /auction|EIA Crude|EIA Natural|MBA Mortgage|Redbook|Baker Hughes|Rig Count|Bill |TIPS |Bund |Schatz |OAT |Gilt |BTP |Bonos|Fed Balance Sheet|Money Supply|M2 |M3 |Foreign Exchange Reserve|Reserve Assets/i;
 
 const COUNTRY_FLAGS = {
   US: "🇺🇸", DE: "🇩🇪", FR: "🇫🇷", GB: "🇬🇧", JP: "🇯🇵",
@@ -50,7 +57,15 @@ function getWeekRange(today = new Date()) {
   return { monday, friday };
 }
 
-function isoDate(d) { return d.toISOString().split("T")[0]; }
+// Lokale Kalendertag-Extraktion (Europe/Berlin, der Prozess-Timezone). toISOString()
+// (UTC) würde bei positivem UTC-Offset einen Tag zurückverschieben (Mo 00:00 CEST =
+// So 22:00 UTC) — sowohl bei den Wochengrenzen als auch bei früh-morgendlichen Events.
+function isoDateLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
 
 function fmtTime(iso) {
   if (!iso) return "–";
@@ -92,8 +107,8 @@ function tickerToCountry(ticker = "") {
 
 async function fetchFinvizCalendarEvents() {
   const { monday, friday } = getWeekRange();
-  const monStr = isoDate(monday);
-  const friStr = isoDate(friday);
+  const monStr = isoDateLocal(monday);
+  const friStr = isoDateLocal(friday);
 
   const res = await fetch("https://finviz.com/calendar.ashx", {
     headers: HEADERS_FV,
@@ -113,7 +128,7 @@ async function fetchFinvizCalendarEvents() {
   const events = entries
     .filter((e) => {
       if ((e.importance ?? 0) < 3) return false;
-      const dateStr = isoDate(new Date(e.date));
+      const dateStr = isoDateLocal(new Date(e.date));
       return dateStr >= monStr && dateStr <= friStr;
     })
     .map((e) => {
@@ -121,7 +136,7 @@ async function fetchFinvizCalendarEvents() {
       const countryCode = tickerToCountry(e.ticker ?? "");
       return {
         time_iso:   dateObj.toISOString(),
-        date_str:   isoDate(dateObj),
+        date_str:   isoDateLocal(dateObj),
         time:       fmtTime(dateObj.toISOString()),
         weekday:    fmtWeekday(dateObj),
         country:    countryCode,
@@ -167,10 +182,19 @@ async function fetchTVEconomicEvents() {
 
     const data = await res.json();
     return (data.result ?? [])
-      .filter((e) => (e.importance ?? 0) >= MIN_IMPORTANCE_TV)
+      .filter((e) => {
+        const imp   = e.importance ?? -1;
+        const title = e.title ?? "";
+        if (imp >= MIN_IMPORTANCE_TV) return true;         // HIGH immer rein
+        if (imp === 0) {
+          // MED: rein wenn Whitelist-Keyword und kein Noise-Pattern
+          return MED_WHITELIST.test(title) && !MED_NOISE.test(title);
+        }
+        return false;                                       // LOW (imp=-1) raus
+      })
       .map((e) => ({
         time_iso:   e.date ?? "",
-        date_str:   e.date ? isoDate(new Date(e.date)) : "",
+        date_str:   e.date ? isoDateLocal(new Date(e.date)) : "",
         time:       fmtTime(e.date),
         weekday:    e.date ? fmtWeekday(new Date(e.date)) : "",
         country:    e.country ?? "–",
@@ -210,8 +234,8 @@ export async function fetchEconomicEvents() {
 export async function fetchEarningsForWeek(symbols = []) {
   if (!symbols.length) return [];
   const { monday, friday } = getWeekRange();
-  const monStr = isoDate(monday);
-  const friStr = isoDate(friday);
+  const monStr = isoDateLocal(monday);
+  const friStr = isoDateLocal(friday);
 
   // Only equity symbols (must have exchange prefix EXCH:SYMBOL). Crypto/FX/futures excluded.
   const tickers = symbols
@@ -259,7 +283,7 @@ export async function fetchEarningsForWeek(symbols = []) {
       // Prüfe zukünftiges Earnings-Datum
       if (tsNext) {
         const dateObj = new Date(tsNext * 1000);
-        const dStr    = isoDate(dateObj);
+        const dStr    = isoDateLocal(dateObj);
         if (dStr >= monStr && dStr <= friStr) {
           const timeLabel = pubType === 1 ? "BMO" : pubType === 2 ? "AMC" : "–";
           results.push({
@@ -277,7 +301,7 @@ export async function fetchEarningsForWeek(symbols = []) {
       // Prüfe letztes veröffentlichtes Earnings-Datum (für Act-vs-Exp nach Release)
       if (tsPast) {
         const dateObj = new Date(tsPast * 1000);
-        const dStr    = isoDate(dateObj);
+        const dStr    = isoDateLocal(dateObj);
         if (dStr >= monStr && dStr <= friStr) {
           // Duplikate vermeiden: wenn beide Termine identisch sind, nur aktualisieren
           const existing = results.find((r) => r.symbol === symbol && r.date_str === dStr);

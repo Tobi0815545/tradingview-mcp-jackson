@@ -55,6 +55,8 @@ const COLUMNS = [
   "exchange",                                  // 19 Börse
   "sector",                                    // 20 Sektor
   "isin",                                      // 21 ISIN-Code (für Länder-Filter)
+  "country",                                   // 22 Herkunftsland des Unternehmens (z.B. "United States")
+  "total_revenue_yoy_growth_fy",               // 23 Umsatzwachstum YoY (CANSLIM "A"-Kriterium)
 ];
 
 // ── API-Aufruf ───────────────────────────────────────────────────────────────
@@ -79,19 +81,34 @@ async function fetchMarket(marketKey, { limit = 100 } = {}) {
     range: [0, limit],
   };
 
-  const res = await fetch(market.endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-    signal: AbortSignal.timeout(12_000),
+  // Ein AbortController für den gesamten Fetch-Lifecycle (connect + headers + body).
+  // Promise.race stellt sicher dass der Timeout auch dann greift wenn undici
+  // AbortSignal intern nicht korrekt propagiert.
+  const controller = new AbortController();
+  const fetchWithTimeout = new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`Timeout nach 15s für ${marketKey}`));
+    }, 15_000);
+    fetch(market.endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+      .then(async (res) => {
+        if (!res.ok) {
+          const errText = await res.text().catch(() => "");
+          reject(new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`));
+        } else {
+          resolve(await res.json());
+        }
+      })
+      .catch(reject)
+      .finally(() => clearTimeout(timer));
   });
 
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${errText.slice(0, 100)}`);
-  }
-
-  const json = await res.json();
+  const json = await fetchWithTimeout;
   return (json.data || [])
     .map((row) => parseRow(row, marketKey, market.label))
     .filter(Boolean);  // null-Zeilen (kein Symbol) entfernen
@@ -130,11 +147,12 @@ function parseRow(row, marketKey, marketLabel) {
     high52w:      get(15),
     low52w:       get(16),
     eps_growth:   get(17),
-    rev_growth:   null,
+    rev_growth:   get(23),
     market_cap:   get(18),
     exchange:     get(19) ?? marketLabel,
     sector:       get(20) ?? "",
     isin:         get(21) ? String(get(21)).trim() : null,
+    country:      get(22) ? String(get(22)).trim() : null,
     short_float:  null,   // wird via Yahoo Finance nachgeladen (US) oder N/V (EU)
   };
 }
@@ -242,6 +260,10 @@ function fmtPct(v) {
 // Sequentielle Anfragen mit 1.5s Pause um Rate-Limiting zu vermeiden.
 
 async function fetchShortFloatFinviz(ticker) {
+  // Promise.race-basierter Timeout: garantiert zuverlässig, egal ob fetch oder res.text() hängt.
+  // AbortSignal.timeout() allein reicht nicht — res.text() kann trotzdem hängen.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 8_000);  // 8s hard limit
   try {
     const res = await fetch(
       `https://finviz.com/quote.ashx?t=${encodeURIComponent(ticker)}`,
@@ -252,7 +274,7 @@ async function fetchShortFloatFinviz(ticker) {
           Accept: "text/html,application/xhtml+xml",
           "Accept-Language": "en-US,en;q=0.9",
         },
-        signal: AbortSignal.timeout(10_000),
+        signal: controller.signal,
       }
     );
     if (!res.ok) return null;
@@ -265,6 +287,8 @@ async function fetchShortFloatFinviz(ticker) {
     return match ? parseFloat(match[1]) : null;  // bereits in Prozent (z.B. 1.2 = 1.2%)
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -272,10 +296,17 @@ async function fetchShortFloatFinviz(ticker) {
  * Holt Short % of Float für eine Liste von US-Tickern via Finviz (sequentiell).
  * Gibt eine Map { ticker → shortFloat% } zurück.
  * Fehler werden still ignoriert (Short-Float bleibt null für diesen Ticker).
+ * Globaler Timeout: 60s — bei Finviz-Blockade wird mit den bis dahin gesammelten Daten weitergemacht.
  */
 async function fetchShortFloats(tickers) {
   const result = new Map();
+  const deadline = Date.now() + 60_000;   // max. 60s für alle Requests zusammen
+
   for (const ticker of tickers) {
+    if (Date.now() >= deadline) {
+      console.log(`⚠️  Finviz Short-Float: 60s Timeout erreicht — überspringe restliche ${tickers.length - [...result.keys()].length} Ticker`);
+      break;
+    }
     const sf = await fetchShortFloatFinviz(ticker);
     if (sf !== null) result.set(ticker, sf);
     // 1.5s Pause zwischen Requests — Finviz blockiert bei zu vielen gleichzeitigen Requests
@@ -307,9 +338,20 @@ export async function runScan({
     })
   );
 
-  // Short Float für US-Aktien via Yahoo Finance nachladen
-  const usTickers = [...new Set(allRows.filter(r => r.market === "us").map(r => r.ticker))];
-  const shortFloats = usTickers.length > 0 ? await fetchShortFloats(usTickers) : new Map();
+  // Short Float für US-Aktien via Finviz nachladen (sequentiell, 1.5s/Request).
+  // Nur die Top-30 US-Kandidaten nach Rohscore abfragen — spart >60% Zeit ohne
+  // Qualitätsverlust, da Short-Float-Filter nur Grenzfälle unter den Top-5 betrifft.
+  const allUsTickers = [...new Set(allRows.filter(r => r.market === "us").map(r => r.ticker))];
+  const scoredForSf  = allUsTickers
+    .map(t => {
+      const row = allRows.find(r => r.ticker === t && r.market === "us");
+      const { stars } = row ? scoreCandidate(row) : { stars: 0 };
+      return { t, stars };
+    })
+    .sort((a, b) => b.stars - a.stars)
+    .slice(0, 30)
+    .map(x => x.t);
+  const shortFloats = scoredForSf.length > 0 ? await fetchShortFloats(scoredForSf) : new Map();
 
   // Short Float eintragen + US-Aktien mit Short Float > MAX_SHORT_FLOAT herausfiltern
   const filteredRows = allRows.filter((c) => {
@@ -398,9 +440,15 @@ export async function runScan({
 
   const allCandidates = [...seen.values()].filter((c) => c.stars >= min_stars);
 
-  // US-Ergebnisse: US-Markt + US-ISIN zwingend (kein isin=null — verhindert ADRs, Kreuzlistungen)
+  // US-Ergebnisse: US-Markt + US-ISIN + US-Herkunftsland
+  // country === "United States" schließt ADRs und Kreuzlistungen (Telefonica Brasil, Fujikura etc.)
+  // auch dann aus, wenn sie eine US-ISIN besitzen.
   const usResults = allCandidates
-    .filter((c) => c.market === "us" && c.isin?.startsWith("US"))
+    .filter((c) =>
+      c.market === "us" &&
+      c.isin?.startsWith("US") &&
+      c.country === "United States"
+    )
     .sort(sortFn)
     .slice(0, 5)
     .map(toResult);
