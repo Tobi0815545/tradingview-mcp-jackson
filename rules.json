@@ -1,65 +1,116 @@
 {
-  "watchlist": ["BTCUSDT"],
-  "default_timeframe": "1",
+  "watchlist_name": "TRADES",
+  "max_symbols": 999,
+  "default_timeframe": "D",
+  "confirm_timeframe": "60",
 
   "strategy": {
-    "name": "10-Second Momentum Scalper",
+    "name": "CANSLIM Swing Trading — 5-Sterne-Setup",
+    "style": "Swing Trading (Haltedauer 2–10 Tage bis mehrere Wochen)",
     "sources": [
-      "Price momentum — buy if last close > previous close (green candle)",
-      "RSI filter — only trade when RSI is not at an extreme (30–70 range)"
+      "William O'Neil — CANSLIM (How to Make Money in Stocks)",
+      "Mark Minervini — SEPA (Trade Like a Stock Market Wizard)",
+      "Stan Weinstein — Stage Analysis",
+      "Dan Zanger — Momentum Breakouts"
     ],
     "primary_timeframes": [
-      "1-minute (signal source)",
-      "10-second execution loop"
+      "Daily (Setup-Identifikation und Baseanalyse)",
+      "60min (Entry-Timing und Breakout-Bestätigung)"
     ]
   },
 
-  "indicators": {
-    "rsi_14": "Momentum filter. Only trade when RSI is between 30–70 (avoid extremes).",
-    "price_momentum": "Compare last close vs previous close. Up = long signal. Down = short signal."
+  "five_star_criteria": {
+    "1_stage2_uptrend": {
+      "name": "Stage 2 Uptrend / Trendtemplate",
+      "description": "Kurs über 50-MA, 50-MA über 150-MA, 150-MA über 200-MA. 200-MA steigt. Kurs max. 25% unter 52W-Hoch.",
+      "bullish": "Alle MAs in korrekter Reihenfolge, Kurs darüber",
+      "bearish": "Kurs unter 50-MA oder MAs in falscher Reihenfolge (Stage 1/3/4)"
+    },
+    "2_relative_strength": {
+      "name": "Relative Stärke (Mansfield RS / IBD RS)",
+      "description": "Aktie schlägt den Markt. Mansfield RS > 0 (ideal > 1.0). Kurs nahe 52W-Hoch während Markt schwächelt.",
+      "bullish": "Mansfield RS > 0, Aktie outperformt Index",
+      "bearish": "Mansfield RS < 0, Aktie underperformt"
+    },
+    "3_tight_base_vcp": {
+      "name": "Tight Base / VCP (Volatility Contraction Pattern)",
+      "description": "Konsolidierung mit sinkender Volatilität und abnehmendem Volumen. Typische Bases: Flat Base, Cup-with-Handle, VCP. Basis mind. 3 Wochen, max. Tiefe 30–35%.",
+      "bullish": "Enge Basis, Volumen trocknet aus (mind. 30% unter Schnitt), Kurs konsolidiert tight",
+      "bearish": "Wilde, weite Konsolidierung, hohes Volumen bei Abgaben"
+    },
+    "4_volume_pattern": {
+      "name": "Volumen-Dry-Up + Breakout-Volumen",
+      "description": "Volumen während Basis mind. 30% unter Durchschnitt (kein Abgabedruck). Beim Ausbruch über Pivotpunkt mind. 40–50% über Durchschnitt.",
+      "bullish": "Volumen trocknet in Basis aus, explodiert beim Breakout",
+      "bearish": "Hohes Volumen bei Abgaben, niedriges Volumen beim Anstieg"
+    },
+    "5_canslim_fundamentals": {
+      "name": "CANSLIM Fundamentals",
+      "description": "C: EPS aktuelles Quartal ≥ +25%. A: Jährliches EPS-Wachstum ≥ +25% (3-5 Jahre). N: Neues Produkt/Service/Management/Markthoch. I: Institutionelle kaufen (steigende Fondsanzahl).",
+      "bullish": "EPS-Wachstum ≥ 25%, neuer Katalysator vorhanden, institutionelle Akkumulation",
+      "bearish": "Rückläufige Earnings, kein Katalysator, Fonds verkaufen"
+    }
   },
 
   "bias_criteria": {
-    "bullish": [
-      "Last 1-min candle closed higher than the one before it",
-      "RSI is between 30 and 70"
+    "5_star": [
+      "Alle 5 Kriterien erfüllt — maximale Conviction, volle Positionsgröße",
+      "Stage 2 Uptrend bestätigt",
+      "Mansfield RS > 1.0",
+      "Tight Base (Volumen Dry-Up bestätigt)",
+      "Breakout mit Volumen > 40% über Durchschnitt",
+      "EPS-Wachstum ≥ 25%"
     ],
-    "bearish": [
-      "Last 1-min candle closed lower than the one before it",
-      "RSI is between 30 and 70"
+    "4_star": [
+      "4 von 5 Kriterien erfüllt — gutes Setup, reduzierte Positionsgröße",
+      "Stage 2 und RS bestätigt, aber Basis noch nicht komplett ausgeformt ODER Fundamentals schwächer"
     ],
-    "neutral": [
-      "RSI is above 70 (overbought — skip)",
-      "RSI is below 30 (oversold — skip)",
-      "Candle close change is less than 0.05% (chop — skip)"
+    "3_star_watch": [
+      "3 Kriterien erfüllt — Beobachtungsliste, noch kein Einstieg",
+      "Setup in Entwicklung, auf Basis-Ausformung warten"
+    ],
+    "skip": [
+      "Weniger als 3 Kriterien erfüllt — kein Trade",
+      "Kurs unter 50-MA (kein Stage 2)",
+      "Mansfield RS negativ (Underperformer)",
+      "Breakout ohne Volumen — falscher Ausbruch"
     ]
   },
 
   "entry_rules": {
-    "long": [
-      "Last close > previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market buy immediately"
+    "primary_entry": [
+      "Ausbruch über Pivotpunkt (Basis-Hoch) auf Daily mit Volumen ≥ 40% über Schnitt",
+      "Entry auf 60min-Chart beim ersten sauberen Pullback nach Ausbruch (Minervini-Style)",
+      "Alternativ: Intraday-Bestätigung über Pivot auf 60min mit Volumen"
     ],
-    "short": [
-      "Last close < previous close by at least 0.05%",
-      "RSI between 30 and 70",
-      "Enter market sell immediately"
+    "position_sizing": [
+      "5-Sterne-Setup: 10–15% des Portfolios",
+      "4-Sterne-Setup: 5–7% des Portfolios",
+      "Maximal 4 offene Positionen gleichzeitig"
     ]
   },
 
   "exit_rules": [
-    "Exit automatically after 10 seconds (next loop tick closes previous position)",
-    "No manual exit management — pure time-based scalp"
+    "Stop-Loss: 7–8% unter Einstieg (O'Neil-Regel) oder unter Basis-Tief",
+    "Teilverkauf: 20–25% Gewinn → halbe Position verkaufen (Gewinne sichern)",
+    "Trailing Stop: Nach 20% Gewinn auf 10% Trailing Stop umstellen",
+    "Zwangsausstieg: Kurs schließt unter 50-MA auf Daily → Exit",
+    "Nie gegen den Markttrend traden (M in CANSLIM — Market Direction)"
   ],
 
   "risk_rules": [
-    "Fixed trade size: 1% of portfolio per trade",
-    "Maximum trade size: $3.00",
-    "Maximum 6 trades per 60-second run",
-    "No stop loss — exit is time-based at next tick",
-    "For demo purposes only — minimum BitGet order size may apply"
+    "Max. Verlust pro Trade: 1–2% des Gesamtportfolios",
+    "Stop-Loss wird immer vor dem Einstieg definiert (niemals danach)",
+    "Bei 3 Verlusten in Folge: Pause, Markt neu bewerten",
+    "Kein Trading in Stage 3/4 Märkten (Distribution/Decline)",
+    "Position erst nach Daily-Close-Bestätigung aufbauen"
   ],
 
-  "notes": "Demo strategy for YouTube video. Runs 6 trades over 60 seconds, one every 10 seconds. Signal is simple price momentum on 1-min candles with RSI sanity check."
+  "market_filters": {
+    "bullish_market": "SPY/DAX über 200-MA, Mehrzahl der Setups funktionieren → volle Risikobereitschaft",
+    "neutral_market": "Index zwischen 50-MA und 200-MA → kleinere Positionen, nur 5-Sterne-Setups",
+    "bearish_market": "Index unter 200-MA → kein Long-Trading, Cash halten"
+  },
+
+  "notes": "CANSLIM Swing Trading nach O'Neil/Minervini. Ziel: Wenige, hochwertige Trades mit großer Conviction. Nicht jeden Tag traden — auf das perfekte Setup warten."
 }

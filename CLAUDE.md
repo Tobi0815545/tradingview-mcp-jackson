@@ -120,6 +120,44 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 - OHLCV capped at 500 bars, trades at 20 per request
 - Pine labels capped at 50 per study by default (pass `max_labels` to override)
 
+## Daily Brief — Zwei Versionen
+
+### ⚡ Tages-Flash (täglich automatisch, schlank)
+Enthält: Markt-Regime, Kalender, Watchlist-Tabelle, News (nach Symbol gruppiert), CANSLIM Scanner.
+**Nicht** enthalten: Mario Lochner, Tradermacher, Lieblingstrade, Options-IV.
+Laufzeit: ~1–1.5 Minuten.
+
+**Automatic schedule (LaunchAgent, Mo–Fr):**
+- 17:00 CEST → `--mode=flash` (Tages-Flash)
+
+```bash
+npm run flash          # --mode=flash  (Tages-Flash, 17:00)
+npm run flash:closing  # --mode=flash-closing (Closing-Modus, 10:00)
+```
+
+### 📈 Deep Brief (nur auf konkrete Anfrage im Chat)
+Enthält alles: Markt-Regime, **Mario Lochner**, Kalender, Watchlist-Tabelle, News, CANSLIM Scanner, **Tradermacher**, **Lieblingstrade**, Options-IV.
+Laufzeit: ~2–3 Minuten.
+
+**When the user explicitly asks for the full/deep brief:**
+- "Schick mir den Deep Brief" / "vollständiger Brief"
+- "brief jetzt" (ohne "flash") → Deep Brief verwenden
+
+→ Use `--mode=daily` for the afternoon deep brief.
+→ Use `--mode=closing` for the morning deep brief (Closing Bell vom Vortag).
+
+```bash
+npm run brief          # --mode=daily  (Deep Brief)
+npm run brief:closing  # --mode=closing (Deep Brief, Closing)
+```
+
+For the weekly summary (Fridays):
+```bash
+npm run brief:weekly
+```
+
+Wait for `✅ Email erfolgreich gesendet` in the output before confirming to the user.
+
 ## Architecture
 
 ```
@@ -127,3 +165,100 @@ Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ Trading
 ```
 
 Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`
+
+## TradingView Desktop — Kritische Rendering-Erkenntnisse (2026-04-30)
+
+### Zwei getrennte Layers — NUR der Datenstrom ist per JS steuerbar
+
+TradingView Desktop (Electron) hat zwei vollständig getrennte Layers:
+
+| Layer | Was | Steuerbar per CDP-JS? |
+|-------|-----|----------------------|
+| **Daten-Layer** | `_chartWidgetsDefs[i].chartWidget`, `_activeChartWidgetWV.value()` (Wrapper "gt"), `collection.setSymbol()` | ✅ Ja |
+| **Render-Layer** | Sichtbare Canvas, Kerzen, Preisachse, Legendentitel | ❌ Nein |
+
+Der Render-Layer ist im **Electron-Window-Target** (`file:///...app/window/index.html`) verankert und an das **Watchlist-selektierte Symbol** gebunden. Alle JS-API-Calls aktualisieren nur den Datenstrom, der Renderer bleibt immer auf dem Watchlist-Symbol.
+
+### CDP-Targets in TradingView Desktop
+
+```
+03FFB6981B8E7C360D01187BB3C5A57F  → https://de.tradingview.com/chart/...  (Chart-Page, unser CDP-Target)
+9977867C54BDA451735FC140052EAD22  → file:///…/app/window/index.html        (Electron-Window, Render-Layer)
+CC88E8B507BBF4ED676AD7A8569F6720  → file:///…/app/tooltip/index.html       (Tooltip)
+057456627898A3D61D85EE8AFE70B961  → file:///…/app/browser-api-container/   (Browser API)
+```
+
+`connection.js` verbindet sich zum **Chart-Page**-Target (tradingview.com/chart). Dessen JS-Kontext enthält `window.TradingViewApi`, `window.TradingView`, etc.
+
+### Interne API-Objekte
+
+```javascript
+// Daten-Layer (per CDP-JS steuerbar):
+window.TradingViewApi._chartWidgetCollection          // Chart-Widget-Collection
+window.TradingViewApi._chartWidgetCollection._chartWidgetsDefs[0].chartWidget  // chartWidget (cw)
+window.TradingViewApi._activeChartWidgetWV.value()    // "gt"-Wrapper (Typ: gt)
+window.TradingViewApi._chartWidgetCollection.setSymbol(sym)  // → _setSymbolImpl()
+
+// gt-Wrapper-Methoden (setSymbol, setVisibleRange, onSymbolChanged, ...):
+// gt.symbol() gibt den Datenstrom-Symbol zurück (NICHT was visuell gerendert wird)
+// gt.setSymbol(sym) wechselt Datenstrom, aber NICHT den Renderer
+
+// Zeichnungen / Shapes → operieren auf Datenstrom-Symbol:
+window.TradingViewApi._activeChartWidgetWV.value().getAllShapes()  // Shapes auf Datenstrom-Symbol
+```
+
+### Was funktioniert / was nicht
+
+| Methode | Datenstrom-Symbol | Visueller Renderer |
+|---------|------------------|--------------------|
+| `cw.setSymbol(sym, {})` | ✅ wechselt | ❌ kein Effekt |
+| `collection.setSymbol(sym)` → `_setSymbolImpl` | ✅ wechselt | ❌ kein Effekt |
+| `gt.setSymbol(sym)` | ✅ wechselt | ❌ kein Effekt |
+| Symbol-Suche-Dialog-Klick (CDP clickAt) | ✅ wechselt | ❌ kein Effekt¹ |
+| Watchlist-Klick (CDP clickAt) | ✅ wechselt | ❌ kein Effekt¹ |
+| `drawShape()` / `clearAll()` / `createPositionLine()` | ✅ auf Datenstrom-Symbol | — |
+
+¹ Keiner der getesteten CDP-Ansätze konnte den Electron-Render-Layer aktualisieren.
+
+### Lösung: Custom Chart-Renderer (`renderTradeChart`)
+
+Da der Render-Layer nicht steuerbar ist, generiert `favorite-trade.js` das Chart-Bild direkt aus OHLCV-Daten via **Browser-Canvas-API**:
+
+```javascript
+// favorite-trade.js: renderTradeChart(bars, setup, ticker, voigt, candidate)
+// → Candlestick-PNG mit Entry/Stop/Target, Voigt-Levels, Titelleiste
+// → Gespeichert in screenshots/favtrade_${ticker}.png
+// → Base64 in screenshotBase64 für Email-Embedding
+```
+
+**Vorteile gegenüber CDP-Screenshot:**
+- Immer korrektes Symbol (unabhängig von Watchlist-Bindung)
+- Entry/Stop/Target immer klar sichtbar im richtigen Preisbereich
+- Schneller (kein Warten auf TradingView-Render)
+- Enthält Voigt-Metadata direkt im Titel
+
+## Watchlist-Sync — Kritische Erkenntnisse (2026-05-27)
+
+### TradingView Dropdown-Menus sind portal overlays (`position: fixed`)
+
+TradingView rendert alle Dropdown-Menus (inkl. Watchlist-Switcher) als portal overlay mit `position: fixed`.
+Bei `position: fixed` ist `el.offsetParent === null` — **das bedeutet NICHT unsichtbar!**
+
+**Falsch (altes Muster):**
+```javascript
+if (el.children.length > 0 || !el.offsetParent) continue; // ❌ überspringt fixed-Elemente
+```
+
+**Richtig (nach Fix):**
+```javascript
+var r = el.getBoundingClientRect();
+if (r.width < 5 || r.height < 5) continue; // ✅ funktioniert auch bei position:fixed
+```
+
+→ Gilt für **alle** UI-Interaktionen mit TradingView-Dropdowns, Menus, Overlays.
+
+### Watchlist-Cache (`rules-watchlist-cache.json`)
+
+- Wird bei jedem erfolgreichen `runBrief()` automatisch via `saveWlCache()` aktualisiert
+- Dient als Fallback wenn TradingView nicht erreichbar ist
+- Bei veraltetem Cache manuell mit `node --input-type=module` + `watchlistCore.switchTo()` aktualisieren
