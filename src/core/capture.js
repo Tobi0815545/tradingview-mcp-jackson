@@ -9,7 +9,7 @@ import { fileURLToPath } from 'url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCREENSHOT_DIR = join(dirname(dirname(__dirname)), 'screenshots');
 
-export async function captureScreenshot({ region, filename, method } = {}) {
+export async function captureScreenshot({ region, filename, method, clip: clipOverride } = {}) {
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-');
@@ -44,6 +44,29 @@ export async function captureScreenshot({ region, filename, method } = {}) {
       })()
     `);
     if (bounds) clip = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, scale: 1 };
+  } else if (region === 'chart_only') {
+    // Chart-Bereich ohne rechte Seitenleiste (Watchlist / Panel)
+    // Verwendet den zentralen Layout-Bereich (layout__area--center) als Clip-Region
+    const bounds = await evaluate(`
+      (function() {
+        var selectors = [
+          '[class*="layout__area--center"]',
+          '[data-name="chart-area"]',
+          '[class*="chartWidget"]',
+          '[class*="chart-widget"]',
+        ];
+        for (var s = 0; s < selectors.length; s++) {
+          var el = document.querySelector(selectors[s]);
+          if (el && el.offsetWidth > 200) {
+            var rect = el.getBoundingClientRect();
+            return { x: Math.round(rect.x), y: Math.round(rect.y),
+                     width: Math.round(rect.width), height: Math.round(rect.height) };
+          }
+        }
+        return null;
+      })()
+    `);
+    if (bounds) clip = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, scale: 1 };
   } else if (region === 'strategy_tester') {
     const bounds = await evaluate(`
       (function() {
@@ -57,14 +80,18 @@ export async function captureScreenshot({ region, filename, method } = {}) {
     if (bounds) clip = { x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height, scale: 1 };
   }
 
+  // Allow caller to pass explicit clip coordinates (overrides region detection)
+  if (clipOverride) clip = clipOverride;
+
   const params = { format: 'png' };
   if (clip) params.clip = clip;
 
   const { data } = await client.Page.captureScreenshot(params);
-  writeFileSync(filePath, Buffer.from(data, 'base64'));
+  const buf = Buffer.from(data, 'base64');
+  writeFileSync(filePath, buf);
 
   return {
     success: true, method: 'cdp', file_path: filePath, region,
-    size_bytes: Buffer.from(data, 'base64').length,
+    size_bytes: buf.length,
   };
 }

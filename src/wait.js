@@ -17,19 +17,36 @@ export async function waitForChartReady(expectedSymbol = null, expectedTf = null
           || document.querySelector('[data-name="loading"]');
         var isLoading = spinner && spinner.offsetParent !== null;
 
-        // Try to get bar count from data window or chart
-        var barCount = -1;
+        // Get current symbol AND last loaded close price via chartWidget API.
+        // cw.getSymbol() reflects the JS-requested symbol (updates immediately).
+        // lastClose from the series data model reflects the VISUALLY LOADED data —
+        // this changes only after the chart has actually fetched + rendered new bars.
+        var currentSymbol = '';
+        var lastClose     = -1;
+        var barCount      = -1;
         try {
-          var bars = document.querySelectorAll('[class*="bar"]');
-          barCount = bars.length;
-        } catch {}
+          var coll = window.TradingViewApi._chartWidgetCollection;
+          var cw   = coll._chartWidgetsDefs[coll._activeIndex || 0].chartWidget;
+          currentSymbol = cw.getSymbol() || '';
+          // Try to read last bar close from the data model (confirms visual data load)
+          try {
+            var model  = cw._chartWidget.model();
+            var series = model.mainSeries();
+            var barsObj = series.bars();
+            var lastIdx = barsObj.lastIndex();
+            if (lastIdx >= 0) {
+              var lastBar = barsObj.valueAt(lastIdx);
+              // Bar format: [time, open, high, low, close, volume] or similar
+              if (lastBar && lastBar.length >= 5) lastClose = lastBar[4];
+              barCount = lastIdx - barsObj.firstIndex();
+            }
+          } catch(e2) {
+            // Fallback: count DOM elements with "bar" in class — unreliable but better than nothing
+            try { barCount = document.querySelectorAll('[class*="bar"]').length; } catch {}
+          }
+        } catch(e) {}
 
-        // Get current symbol from header
-        var symbolEl = document.querySelector('[data-name="legend-source-title"]')
-          || document.querySelector('[class*="title"] [class*="apply-common-tooltip"]');
-        var currentSymbol = symbolEl ? symbolEl.textContent.trim() : '';
-
-        return { isLoading: !!isLoading, barCount: barCount, currentSymbol: currentSymbol };
+        return { isLoading: !!isLoading, barCount: barCount, lastClose: lastClose, currentSymbol: currentSymbol };
       })()
     `);
 
@@ -46,10 +63,17 @@ export async function waitForChartReady(expectedSymbol = null, expectedTf = null
     }
 
     // Check symbol match if expected
-    if (expectedSymbol && state.currentSymbol && !state.currentSymbol.toUpperCase().includes(expectedSymbol.toUpperCase())) {
-      stableCount = 0;
-      await new Promise(r => setTimeout(r, POLL_INTERVAL));
-      continue;
+    // DOM shows bare ticker (e.g. "0NUX"), expectedSymbol may be "NYSE:0NUX" or "LSIN_DLY:0NUX"
+    // Strip exchange prefix and _DLY suffix before comparing.
+    // If DOM element is empty (not found yet), treat as "not ready" too.
+    if (expectedSymbol) {
+      const rawTicker = expectedSymbol.includes(':') ? expectedSymbol.split(':').pop() : expectedSymbol;
+      const expectedTicker = rawTicker.toUpperCase();
+      if (!state.currentSymbol || !state.currentSymbol.toUpperCase().includes(expectedTicker)) {
+        stableCount = 0;
+        await new Promise(r => setTimeout(r, POLL_INTERVAL));
+        continue;
+      }
     }
 
     // Check bar count stability

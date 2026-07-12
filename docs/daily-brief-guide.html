@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily Briefing — Übersicht & Bedienungsanleitung</title>
+<style>
+  :root { --bg: #f8fafc; --card: #fff; --text: #1e293b; --muted: #64748b; --accent: #2563eb; --green: #16a34a; --orange: #d97706; --red: #dc2626; --border: #e2e8f0; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif; background: var(--bg); color: var(--text); line-height: 1.6; padding: 24px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+  h1 span { font-weight: 400; color: var(--muted); font-size: 18px; }
+  .subtitle { color: var(--muted); font-size: 14px; margin-bottom: 28px; }
+  h2 { font-size: 18px; font-weight: 700; margin: 28px 0 12px; padding-bottom: 6px; border-bottom: 2px solid var(--accent); display: inline-block; }
+  h3 { font-size: 15px; font-weight: 700; margin: 18px 0 8px; color: var(--accent); }
+  .card { background: var(--card); border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,.08); padding: 20px 24px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 640px) { .grid { grid-template-columns: 1fr; } }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; margin: 8px 0; }
+  th { text-align: left; padding: 8px 10px; background: #f1f5f9; font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+  td { padding: 7px 10px; border-bottom: 1px solid var(--border); }
+  .badge { display: inline-block; border-radius: 4px; padding: 2px 8px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+  .badge-green { background: #dcfce7; color: #166534; }
+  .badge-orange { background: #fef3c7; color: #92400e; }
+  .badge-red { background: #fecaca; color: #991b1b; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .badge-gray { background: #f1f5f9; color: #475569; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: 'SF Mono', Menlo, monospace; }
+  .cmd { background: #1e293b; color: #e2e8f0; padding: 10px 14px; border-radius: 8px; font-family: 'SF Mono', Menlo, monospace; font-size: 13px; margin: 8px 0; overflow-x: auto; }
+  .emoji { font-size: 20px; margin-right: 6px; vertical-align: middle; }
+  .flow { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .flow-step { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+  .flow-arrow { color: var(--muted); font-size: 16px; }
+  .section-icon { font-size: 22px; margin-right: 6px; }
+  .source { font-size: 11px; color: var(--muted); }
+  ul { padding-left: 20px; margin: 6px 0; }
+  li { margin: 4px 0; font-size: 13px; }
+  .tip { background: #eff6ff; border-left: 3px solid var(--accent); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; margin: 12px 0; }
+  .warn { background: #fef3c7; border-left: 3px solid var(--orange); padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 13px; margin: 12px 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Daily Briefing <span>— TradingView MCP</span></h1>
+<p class="subtitle">Automatisches Markt-Briefing per Email, generiert aus TradingView Desktop + REST-APIs</p>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h2><span class="section-icon">📬</span> Zwei Versionen</h2>
+
+<div class="grid">
+  <div class="card">
+    <h3>⚡ Tages-Flash</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Täglich automatisch, Mo–Fr 17:00 CEST</p>
+    <div class="cmd">npm run flash</div>
+    <table>
+      <tr><td>Markt-Regime</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Kalender</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Watchlist-Tabelle</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Breaking News</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>CANSLIM Scanner</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Mario Lochner</td><td><span class="badge badge-gray">–</span></td></tr>
+      <tr><td>Tradermacher</td><td><span class="badge badge-gray">–</span></td></tr>
+      <tr><td>Lieblingstrade</td><td><span class="badge badge-gray">–</span></td></tr>
+    </table>
+    <p style="font-size:12px;color:var(--muted)">Laufzeit: ~2–4 Minuten</p>
+  </div>
+
+  <div class="card">
+    <h3>📈 Deep Brief</h3>
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">Nur auf Anfrage im Chat</p>
+    <div class="cmd">npm run brief</div>
+    <table>
+      <tr><td>Markt-Regime</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Kalender</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Watchlist-Tabelle</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Breaking News</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>CANSLIM Scanner</td><td><span class="badge badge-green">&#10003;</span></td></tr>
+      <tr><td>Mario Lochner</td><td><span class="badge badge-blue">&#10003;</span></td></tr>
+      <tr><td>Tradermacher</td><td><span class="badge badge-blue">&#10003;</span></td></tr>
+      <tr><td>Lieblingstrade</td><td><span class="badge badge-blue">&#10003;</span></td></tr>
+    </table>
+    <p style="font-size:12px;color:var(--muted)">Laufzeit: ~4–6 Minuten</p>
+  </div>
+</div>
+
+<div class="card" style="margin-top:8px">
+  <h3>Weitere Modi</h3>
+  <table>
+    <thead><tr><th>Befehl</th><th>Modus</th><th>Beschreibung</th></tr></thead>
+    <tr><td><code>npm run flash:closing</code></td><td>flash-closing</td><td>Tages-Flash mit Closing-Daten (10:00)</td></tr>
+    <tr><td><code>npm run brief:closing</code></td><td>closing</td><td>Deep Brief mit Closing-Daten</td></tr>
+    <tr><td><code>npm run brief:weekly</code></td><td>weekly</td><td>Wochenzusammenfassung (freitags)</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h2><span class="section-icon">🧩</span> Module im Detail</h2>
+
+<div class="card">
+  <h3>🚦 Markt-Regime</h3>
+  <p style="font-size:13px">Ampel-System basierend auf der Position der US-Indizes relativ zu ihren gleitenden Durchschnitten.</p>
+  <table>
+    <thead><tr><th>Signal</th><th>Bedeutung</th><th>Kriterien</th></tr></thead>
+    <tr><td><span class="badge badge-green">CONFIRMED UPTREND</span></td><td>Volle Investition</td><td>SPX > EMA50 > SMA150 > SMA200, VIX < 25</td></tr>
+    <tr><td><span class="badge badge-orange">RALLY ATTEMPT</span></td><td>Vorsichtig</td><td>SPX über einigen MAs, aber nicht alle aligned</td></tr>
+    <tr><td><span class="badge badge-red">DOWNTREND</span></td><td>Defensiv</td><td>SPX < SMA200 oder VIX > 30</td></tr>
+  </table>
+  <p class="source">Indizes: DJI, SPX, NDX, RUT, DAX, SX5E, NI225, HSI, VIX &nbsp;·&nbsp; Quelle: TradingView Scanner API</p>
+</div>
+
+<div class="card">
+  <h3>📊 Buffett-Indikator</h3>
+  <p style="font-size:13px">US-Gesamtmarktkapitalisierung / BIP — Warren Buffetts "single best measure" der Gesamtmarktbewertung.</p>
+  <table>
+    <thead><tr><th>Zone</th><th>Bereich</th><th>Berechnung</th></tr></thead>
+    <tr><td><span class="badge badge-green">Stark unterbewertet</span></td><td>&lt; Trend − 2 SD</td><td rowspan="5" style="vertical-align:middle;font-size:12px">Trend: exponentielle Regression über ~300 Quartale FRED-Daten<br>SD: absolute Prozentpunkte (nicht logarithmisch)</td></tr>
+    <tr><td><span class="badge badge-green">Unterbewertet</span></td><td>Trend − 2 SD bis − 1 SD</td></tr>
+    <tr><td><span class="badge badge-gray">Fair bewertet</span></td><td>Trend ± 1 SD</td></tr>
+    <tr><td><span class="badge badge-orange">Überbewertet</span></td><td>Trend + 1 SD bis + 2 SD</td></tr>
+    <tr><td><span class="badge badge-red">Stark überbewertet</span></td><td>&gt; Trend + 2 SD</td></tr>
+  </table>
+  <p class="source">MCap: Fed Z.1 (NCBEILQ027S) × W5000 &nbsp;·&nbsp; BIP: FRED GDP + GDPNow (Atlanta Fed) &nbsp;·&nbsp; Referenz: currentmarketvaluation.com</p>
+</div>
+
+<div class="card">
+  <h3>📉 VIX Terminstruktur</h3>
+  <p style="font-size:13px">Vergleich der VIX-Subindizes über 5 Laufzeiten (9D, 30D, 3M, 6M, 1Y).</p>
+  <ul>
+    <li><strong>Contango</strong> (normal): Kurzfristiger VIX &lt; langfristiger → Markt entspannt</li>
+    <li><strong>Backwardation</strong> (Stress): Kurzfristiger VIX &gt; langfristiger → Panik, Absicherungsbedarf</li>
+  </ul>
+  <p class="source">Quelle: Yahoo Finance (CBOE VIX-Indizes)</p>
+</div>
+
+<div class="card">
+  <h3>😨 Fear &amp; Greed Index</h3>
+  <p style="font-size:13px">CNN Markets Sentiment-Index (0 = Extreme Angst, 100 = Extreme Gier). Zeigt aktuellen Wert + Vergleich zu Gestern, Vorwoche, Vormonat.</p>
+  <p class="source">Quelle: CNN Dataviz API</p>
+</div>
+
+<div class="card">
+  <h3>🗺 Sektor-Performance</h3>
+  <p style="font-size:13px">Heatmap der 11 S&P 500 Sektoren. Zeigt Tages- und Wochenperformance als Farbkacheln.</p>
+  <p class="source">Quelle: Yahoo Finance (Sektor-ETFs: XLK, XLF, XLV, XLE, etc.)</p>
+</div>
+
+<div class="card">
+  <h3>📅 Makro-Kalender</h3>
+  <p style="font-size:13px">High-Impact Wirtschaftsereignisse der laufenden Woche + Earnings von Watchlist-Werten.</p>
+  <p class="source">Quelle: Finviz Economic Calendar + TradingView Earnings Scanner</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h2><span class="section-icon">📈</span> Watchlist-Tabelle</h2>
+
+<div class="card">
+  <p style="font-size:13px;margin-bottom:10px">Pro Symbol werden diese Werte live aus dem TradingView-Chart gelesen (Daily Timeframe):</p>
+  <table>
+    <thead><tr><th>Spalte</th><th>Bedeutung</th><th>Quelle</th></tr></thead>
+    <tr><td><strong>Kurs</strong></td><td>Letzter Kurs (BTC: ganze Dollar)</td><td>TradingView CDP</td></tr>
+    <tr><td><strong>Tag %</strong></td><td>Tagesveränderung</td><td>Berechnet aus OHLCV</td></tr>
+    <tr><td><strong>60T %</strong></td><td>60-Tage-Performance</td><td>Berechnet aus OHLCV</td></tr>
+    <tr><td><strong>MACD-H</strong></td><td>MACD-Histogramm</td><td>TradingView Indikator</td></tr>
+    <tr><td><strong>Volumen</strong></td><td>Volumen + MA, 🔥 bei &gt;150% MA</td><td>TradingView Indikator</td></tr>
+    <tr><td><strong>RSI (14)</strong></td><td>Relative Strength Index + Trend ↑↓→</td><td>TradingView Scanner API</td></tr>
+    <tr><td><strong>⚡ Swing</strong></td><td>CANSLIM Swing-Score (★★★★★)</td><td>Berechnet</td></tr>
+    <tr><td><strong>🎯 Optionen</strong></td><td>Strategie + IVRank</td><td>TradingView IV_Rank Indikator</td></tr>
+    <tr><td><strong>S2</strong></td><td>Stage-2 Uptrend Badge</td><td>TradingView Scanner API</td></tr>
+  </table>
+
+  <h3>⚡ Swing-Score (0–5 Sterne)</h3>
+  <table>
+    <thead><tr><th>Kriterium</th><th>Punkte</th></tr></thead>
+    <tr><td>Stage-2 Uptrend (Close &gt; EMA50 &gt; SMA150 &gt; SMA200)</td><td>+2</td></tr>
+    <tr><td>RSI 50–75 (bullisch, nicht überkauft)</td><td>+1</td></tr>
+    <tr><td>MACD-Histogramm positiv</td><td>+1</td></tr>
+    <tr><td>Volumen-Surge (&gt;150% des MA)</td><td>+1</td></tr>
+  </table>
+
+  <h3>🎯 Options-Strategie (basierend auf IVRank)</h3>
+  <table>
+    <thead><tr><th>Strategie</th><th>Bedingung</th><th>Idee</th></tr></thead>
+    <tr><td><span class="badge badge-purple">IC</span> Iron Condor</td><td>IVR ≥ 50 + RSI 40–60</td><td>Seitwärts + hohe Prämie</td></tr>
+    <tr><td><span class="badge badge-blue">CC</span> Covered Call</td><td>Stage-2 + IVR ≥ 30 + RSI 50–75</td><td>Uptrend + Prämie kassieren</td></tr>
+    <tr><td><span class="badge badge-green">CSP</span> Cash-Secured Put</td><td>IVR ≥ 30 + RSI 28–52</td><td>Konsolidierung + günstiger Einstieg</td></tr>
+    <tr><td><span class="badge badge-orange">Long C</span> Long Call</td><td>Stage-2 + IVR &lt; 30 + RSI ≥ 62</td><td>Starker Trend + günstige Optionen</td></tr>
+  </table>
+  <table style="margin-top:8px">
+    <thead><tr><th>Emoji</th><th>IVRank</th><th>Bedeutung</th></tr></thead>
+    <tr><td>🔥</td><td>≥ 50</td><td>Hohe IV-Umgebung — Premium Selling attraktiv</td></tr>
+    <tr><td>📈</td><td>30–49</td><td>Moderate IV</td></tr>
+    <tr><td>—</td><td>&lt; 30</td><td>Niedrige IV — Long-Optionen günstig</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h2><span class="section-icon">🔍</span> CANSLIM Scanner</h2>
+
+<div class="card">
+  <p style="font-size:13px">Screent ~500 US- und EU-Aktien nach dem CANSLIM-System. Zeigt die Top-Kandidaten mit ≥3 Sternen.</p>
+  <table>
+    <thead><tr><th>Kriterium</th><th>Was wird geprüft</th></tr></thead>
+    <tr><td>Stage-2 Uptrend</td><td>Close &gt; EMA50 &gt; SMA150 &gt; SMA200</td></tr>
+    <tr><td>Relative Strength</td><td>Mansfield RS &gt; 0 (outperformt SPX)</td></tr>
+    <tr><td>Volume</td><td>Überdurchschnittliches Volumen</td></tr>
+    <tr><td>MACD</td><td>Positives Momentum</td></tr>
+    <tr><td>Short Float</td><td>Finviz Short-Float-Daten (nur US)</td></tr>
+  </table>
+  <p class="source">Quelle: TradingView Scanner API + Finviz</p>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h2><span class="section-icon">🏗</span> Architektur</h2>
+
+<div class="card">
+  <div class="flow">
+    <div class="flow-step">LaunchAgent (17:00)</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">daily-brief-email.js</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">TradingView (CDP)</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">REST APIs</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">HTML Email</div>
+    <span class="flow-arrow">→</span>
+    <div class="flow-step">Gmail</div>
+  </div>
+
+  <h3>Datenquellen</h3>
+  <table>
+    <thead><tr><th>Quelle</th><th>Daten</th><th>Methode</th></tr></thead>
+    <tr><td><strong>TradingView Desktop</strong></td><td>Chart-Daten, Indikatoren (MACD, Mansfield RS, IVRank), OHLCV, Kurse</td><td>CDP (Chrome DevTools Protocol)</td></tr>
+    <tr><td><strong>TradingView Scanner API</strong></td><td>Indizes, Stage-2, RSI, Earnings</td><td>REST (kein API-Key)</td></tr>
+    <tr><td><strong>Yahoo Finance</strong></td><td>Sektoren, VIX Terminstruktur, Pre-Market, Options-IV (Fallback)</td><td>REST</td></tr>
+    <tr><td><strong>FRED (Federal Reserve)</strong></td><td>GDP, GDPNow, Marktkapitalisierung (Z.1)</td><td>CSV Download</td></tr>
+    <tr><td><strong>CNN Markets</strong></td><td>Fear &amp; Greed Index</td><td>REST</td></tr>
+    <tr><td><strong>Finviz</strong></td><td>Wirtschaftskalender, Short Float</td><td>HTML Scraping</td></tr>
+    <tr><td><strong>YouTube RSS</strong></td><td>Mario Lochner, Tradermacher Videos</td><td>RSS + Transkript</td></tr>
+    <tr><td><strong>Anthropic API</strong></td><td>Video-Zusammenfassungen, News-Übersetzung</td><td>Claude Haiku</td></tr>
+  </table>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h2><span class="section-icon">⚙️</span> Voraussetzungen</h2>
+
+<div class="card">
+  <ul>
+    <li><strong>TradingView Desktop</strong> muss laufen (wird automatisch gestartet falls nötig)</li>
+    <li><strong>Watchlist-Tab</strong> muss in der rechten Sidebar aktiv sein (einmalig manuell anklicken)</li>
+    <li><strong>Indikatoren auf dem Chart:</strong> VWMA, RSI, MACD, Mansfield RS, IV_Rank, EMA Cross, Volume</li>
+    <li><strong>.env Datei</strong> mit: <code>GMAIL_USER</code>, <code>GMAIL_APP_PASSWORD</code>, <code>ANTHROPIC_API_KEY</code></li>
+    <li><strong>Watchlist "TRADES"</strong> in TradingView mit den zu überwachenden Symbolen</li>
+  </ul>
+
+  <div class="tip">
+    <strong>Tipp:</strong> Die Symbole werden live aus der TradingView-Watchlist gelesen. Neue Symbole in TradingView hinzufügen → erscheinen automatisch im nächsten Brief.
+  </div>
+
+  <div class="warn">
+    <strong>Wichtig:</strong> Falls TradingView nicht erreichbar ist, wird ein Cache verwendet. Im Email erscheint dann der Hinweis "⚠️ Cache-Daten".
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════════════════════ -->
+<h2><span class="section-icon">📁</span> Dateien</h2>
+
+<div class="card">
+  <table>
+    <thead><tr><th>Datei</th><th>Funktion</th></tr></thead>
+    <tr><td><code>scripts/daily-brief-email.js</code></td><td>Hauptskript: orchestriert alles, generiert HTML, sendet Email</td></tr>
+    <tr><td><code>src/core/morning.js</code></td><td>Watchlist-Scan: iteriert über Symbole, liest Indikatoren</td></tr>
+    <tr><td><code>src/core/market.js</code></td><td>Markt-Regime, Indizes, VIX, Fear&amp;Greed, Sektoren, Buffett</td></tr>
+    <tr><td><code>src/core/watchlist.js</code></td><td>TradingView Watchlist lesen &amp; wechseln</td></tr>
+    <tr><td><code>src/core/scanner.js</code></td><td>CANSLIM-Screener (US + EU)</td></tr>
+    <tr><td><code>src/core/news.js</code></td><td>Watchlist-News (TradingView + Yahoo)</td></tr>
+    <tr><td><code>src/core/calendar.js</code></td><td>Makro-Kalender + Earnings</td></tr>
+    <tr><td><code>src/core/options.js</code></td><td>Options-IV + Strategie-Klassifizierung</td></tr>
+    <tr><td><code>src/core/lochner.js</code></td><td>Mario Lochner YouTube-Zusammenfassung</td></tr>
+    <tr><td><code>src/core/tradermacher.js</code></td><td>Tradermacher YouTube-Ideen</td></tr>
+    <tr><td><code>src/core/favorite-trade.js</code></td><td>Lieblingstrade (bester CANSLIM-Kandidat)</td></tr>
+    <tr><td><code>src/connection.js</code></td><td>CDP-Verbindung zu TradingView Desktop</td></tr>
+    <tr><td><code>rules.json</code></td><td>Konfiguration: Watchlist-Name, Timeframes, Kriterien</td></tr>
+  </table>
+</div>
+
+<p style="text-align:center;color:var(--muted);font-size:11px;margin-top:24px">
+  TradingView MCP Daily Briefing · Stand: Juni 2026
+</p>
+
+</div>
+</body>
+</html>

@@ -15,37 +15,37 @@ const CHANNEL_ID  = "UCyCBf6asf89aQJaSXuAuTsg"; // Markus Koch Wall Street
 const RSS_URL     = `https://www.youtube.com/feeds/videos.xml?channel_id=${CHANNEL_ID}`;
 const MAX_TRANSCRIPT_CHARS = 14_000;
 
-// ── RSS: Neuestes Video finden ───────────────────────────────────────────────
+// ── RSS: Video-Liste holen (mit Retry bei transienten Fehlern) ───────────────
 
-async function fetchLatestVideo() {
-  const res = await fetch(RSS_URL, {
-    headers: { "User-Agent": "Mozilla/5.0" },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) throw new Error(`RSS HTTP ${res.status}`);
-  const xml = await res.text();
-
-  // Alle Einträge parsen
-  const entries = [...xml.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((m) => {
-    const entry = m[1];
-    const videoId   = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1];
-    const title     = entry.match(/<title>([^<]+)<\/title>/)?.[1]?.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
-    const published = entry.match(/<published>([^<]+)<\/published>/)?.[1];
-    const url       = entry.match(/href="(https:\/\/www\.youtube\.com\/watch[^"]+)"/)?.[1];
-    return { videoId, title, published, url };
-  }).filter((e) => e.videoId && e.title);
-
-  if (!entries.length) throw new Error("Keine Videos im RSS-Feed gefunden");
-
-  // RSS is in reverse chronological order (newest first).
-  // Strategy: pick the newest entry that matches a Bell/Wall-Street keyword.
-  // If none match in the top 5 entries, fall back to the overall newest video.
-  const keywords = ["opening bell", "closing bell", "wall street"];
-  const recent   = entries.slice(0, 5);
-  const matched  = recent.find((e) =>
-    keywords.some((kw) => e.title.toLowerCase().includes(kw))
-  );
-  return matched || entries[0];
+async function fetchVideoList() {
+  let lastErr;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const res = await fetch(RSS_URL, {
+        headers: { "User-Agent": "Mozilla/5.0 (compatible; DailyBrief/1.0)" },
+        signal: AbortSignal.timeout(12_000),
+      });
+      if (!res.ok) throw new Error(`RSS HTTP ${res.status}`);
+      const xml = await res.text();
+      if (!xml.includes("<entry>")) throw new Error("RSS XML enthält keine Einträge");
+      // parse weiter unten…
+      const entries2parse = xml; // Alias für Closure
+      const entries = [...entries2parse.matchAll(/<entry>([\s\S]*?)<\/entry>/g)].map((m) => {
+        const entry = m[1];
+        const videoId   = entry.match(/<yt:videoId>([^<]+)<\/yt:videoId>/)?.[1];
+        const title     = entry.match(/<title>([^<]+)<\/title>/)?.[1]
+          ?.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").trim();
+        const published = entry.match(/<published>([^<]+)<\/published>/)?.[1];
+        return { videoId, title, published };
+      }).filter((e) => e.videoId && e.title);
+      if (!entries.length) throw new Error("Keine Videos im RSS-Feed gefunden");
+      return entries.slice(0, 10);
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 3000 * attempt));
+    }
+  }
+  throw lastErr;
 }
 
 // ── Transkript laden ─────────────────────────────────────────────────────────
@@ -319,17 +319,39 @@ ${excerpt}`,
 
 // ── Public API ───────────────────────────────────────────────────────────────
 
-export async function runOpeningBell() {
+export async function runOpeningBell(mode = "daily") {
   try {
-    const video = await fetchLatestVideo();
-    if (!video) throw new Error("Kein Video im RSS gefunden");
+    const videos = await fetchVideoList();
+    if (!videos.length) throw new Error("Kein Video im RSS gefunden");
 
+    // Nimm das neueste Video mit verfügbarem Transkript — unabhängig vom Titel.
+    // Markus Koch benennt seine Videos nicht mehr einheitlich als "Opening/Closing Bell",
+    // daher ist Titel-basiertes Filtern nicht mehr zuverlässig.
+    let video      = videos[0]; // Fallback: neuestes Video (ohne Analyse)
     let transcript = null;
     let transcriptError = null;
-    try {
-      transcript = await loadTranscript(video.videoId);
-    } catch (e) {
-      transcriptError = e.message;
+    let skipped    = 0;
+
+    for (const candidate of videos) {
+      try {
+        transcript = await loadTranscript(candidate.videoId);
+        if (transcript) {
+          video = candidate;
+          break;
+        }
+      } catch (e) {
+        transcriptError = e.message;
+        skipped++;
+        if (skipped < videos.length) await new Promise((r) => setTimeout(r, 800));
+      }
+    }
+
+    if (!transcript) {
+      console.warn(`⚠️  Kein Transkript in ${skipped} Videos — zeige "${video.title?.slice(0, 60)}" ohne Analyse.`);
+    } else if (skipped > 0) {
+      console.log(`ℹ️  Bell: ${skipped} Video(s) ohne Transkript übersprungen → "${video.title?.slice(0, 60)}" (${video.published?.slice(0, 10)})`);
+    } else {
+      console.log(`ℹ️  Bell: "${video.title?.slice(0, 60)}" (${video.published?.slice(0, 10)})`);
     }
 
     // Basis-Extraktion (immer — liefert Sentiment + Stocks als Fallback)

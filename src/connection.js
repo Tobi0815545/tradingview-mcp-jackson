@@ -31,8 +31,11 @@ export { KNOWN_PATHS };
 export async function getClient() {
   if (client) {
     try {
-      // Quick liveness check
-      await client.Runtime.evaluate({ expression: '1', returnByValue: true });
+      // Quick liveness check with timeout
+      await Promise.race([
+        client.Runtime.evaluate({ expression: '1', returnByValue: true }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('CDP liveness timeout')), 5000)),
+      ]);
       return client;
     } catch {
       client = null;
@@ -111,6 +114,21 @@ export async function disconnect() {
     client = null;
     targetInfo = null;
   }
+}
+
+export function escapeJS(str) {
+  return String(str).replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n').replace(/\r/g, '\\r');
+}
+
+// Simulate a real mouse click via CDP Input domain.
+// Unlike evaluate()-based React-fiber clicks, this triggers the full browser event
+// chain (mousedown → mouseup → click) so TradingView's watchlist navigation works.
+export async function clickAt(x, y) {
+  const c = await getClient();
+  const params = { x, y, button: 'left', clickCount: 1, modifiers: 0 };
+  await c.Input.dispatchMouseEvent({ type: 'mousePressed', ...params });
+  await c.Input.dispatchMouseEvent({ type: 'mouseReleased', ...params });
+  await c.Input.dispatchMouseEvent({ type: 'mouseMoved', x, y, button: 'none' });
 }
 
 // --- Direct API path helpers ---

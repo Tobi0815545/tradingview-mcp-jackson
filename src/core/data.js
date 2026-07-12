@@ -1,7 +1,7 @@
 /**
  * Core data access logic.
  */
-import { evaluate, evaluateAsync, KNOWN_PATHS } from '../connection.js';
+import { evaluate, evaluateAsync, KNOWN_PATHS, escapeJS } from '../connection.js';
 
 const MAX_OHLCV_BARS = 500;
 const MAX_TRADES = 20;
@@ -15,7 +15,7 @@ function buildGraphicsJS(collectionName, mapKey, filter) {
       var model = chart.model();
       var sources = model.model().dataSources();
       var results = [];
-      var filter = '${filter}';
+      var filter = '${escapeJS(filter)}';
       for (var si = 0; si < sources.length; si++) {
         var s = sources[si];
         if (!s.metaInfo) continue;

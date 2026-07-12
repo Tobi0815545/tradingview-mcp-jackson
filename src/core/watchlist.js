@@ -2,7 +2,7 @@
  * Core watchlist logic.
  * Uses TradingView's internal widget API with DOM fallback.
  */
-import { evaluate, evaluateAsync, getClient } from '../connection.js';
+import { evaluate, evaluateAsync, getClient, clickAt } from '../connection.js';
 
 export async function get() {
   // Try internal API first — reads from the active watchlist widget
@@ -62,6 +62,214 @@ export async function get() {
   };
 }
 
+// Panel-Expand-Funktion: öffnet das Watchlist-Panel via echtem CDP-Mausklick.
+// JavaScript btn.click() reicht nicht — TradingView's Panel-Logik reagiert nur auf
+// echte Mausereignisse (mousedown/mouseup). clickAt() sendet echte CDP Input Events.
+async function expandWatchlistPanel() {
+  const coords = await evaluate(`
+    (function() {
+      // Watchlist-Panel-Button finden (Sidebar Icon)
+      var btn = document.querySelector('[aria-label="Watchlist, details, and news"]')
+             || document.querySelector('[data-name="base"][aria-label]')
+             || document.querySelector('[aria-label*="Watchlist"]');
+      if (!btn) return null;
+      var r = btn.getBoundingClientRect();
+      if (r.width === 0) return null;
+      return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) };
+    })()
+  `);
+  if (!coords) return false;
+  await clickAt(coords.x, coords.y);
+  return true;
+}
+
+export async function switchTo({ name }) {
+  const { getClient } = await import('../connection.js');
+
+  async function hoverClick(x, y) {
+    const c = await getClient();
+    await c.Input.dispatchMouseEvent({ type: 'mouseMoved', x, y, button: 'none' });
+    await new Promise(r => setTimeout(r, 200));
+    await c.Input.dispatchMouseEvent({ type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    await new Promise(r => setTimeout(r, 50));
+    await c.Input.dispatchMouseEvent({ type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+  }
+
+  async function pressEscape() {
+    const c = await getClient();
+    await c.Input.dispatchKeyEvent({ type: 'keyDown', key: 'Escape' });
+    await c.Input.dispatchKeyEvent({ type: 'keyUp', key: 'Escape' });
+  }
+
+  // ── Schritt 1: Panel per CSS auf 420px einfrieren (verhindert Auto-Kollaps) ──
+  await evaluate(`
+    (function() {
+      var ra = document.querySelector('[class*="layout__area--right"]');
+      if (ra) {
+        ra.style.setProperty('width', '420px', 'important');
+        ra.style.setProperty('min-width', '420px', 'important');
+        ra.style.setProperty('flex', 'none', 'important');
+      }
+    })()
+  `);
+
+  // ── Schritt 2: Watchlist-Panel öffnen ──
+  // dispatchEvent('click') öffnet das Panel, aber zeigt ggf. den zuletzt aktiven Tab (z.B. Chats).
+  // Wir müssen sicherstellen, dass der Watchlist-Tab aktiv ist.
+  for (let panelAttempt = 0; panelAttempt < 3; panelAttempt++) {
+    // Prüfe ob Watchlist-Tab bereits sichtbar
+    const wlCheck = await evaluate(`
+      (function() {
+        var wl = document.querySelector('[data-name="watchlists-button"]');
+        if (wl && wl.getBoundingClientRect().width > 5) return { found: true };
+        // Panel offen? Und wenn ja, welcher Tab?
+        var ra = document.querySelector('[class*="layout__area--right"]');
+        var panelW = ra ? ra.getBoundingClientRect().width : 0;
+        return { found: false, panelOpen: panelW > 50 };
+      })()
+    `);
+    if (wlCheck?.found) break;
+
+    if (wlCheck?.panelOpen) {
+      // Panel offen aber falscher Tab → schließen, dann base öffnen
+      await evaluate(`document.querySelector('[data-name="base"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+      await new Promise(r => setTimeout(r, 500));
+    }
+    // base klicken → Watchlist-Tab öffnen
+    await evaluate(`document.querySelector('[data-name="base"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+    await new Promise(r => setTimeout(r, 1500));
+  }
+
+  // ── Schritt 3: Prüfen ob gewünschte Watchlist bereits aktiv ist ──
+  const activeWl = await evaluate(`
+    (function() {
+      var btn = document.querySelector('[data-name="watchlists-button"]');
+      if (!btn) return null;
+      var r = btn.getBoundingClientRect();
+      if (r.width < 5 || r.height < 5) return null;
+      var textEl = btn.querySelector('[class*="titleRow"], [class*="headerMenu"]');
+      var text = (textEl || btn).textContent.trim();
+      return { text: text, x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) };
+    })()
+  `);
+
+  if (!activeWl) throw new Error('Watchlist button not found');
+
+  if (activeWl.text.toUpperCase() === name.toUpperCase()) {
+    return { success: true, watchlist: name, alreadyActive: true };
+  }
+
+  // ── Schritt 4: Kontextmenü öffnen via Hover+Click auf watchlists-button ──
+  let switcherCoords = null;
+  for (let attempt = 0; attempt < 10; attempt++) {
+    switcherCoords = await evaluate(`
+      (function() {
+        var btn = document.querySelector('[data-name="watchlists-button"]');
+        if (!btn) return null;
+        var r = btn.getBoundingClientRect();
+        if (r.width < 5 || r.height < 5) return null;
+        return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) };
+      })()
+    `);
+    if (switcherCoords) break;
+    if (attempt % 3 === 0) {
+      await evaluate(`document.querySelector('[data-name="base"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
+    }
+    await new Promise(r => setTimeout(r, 800));
+  }
+  if (!switcherCoords) throw new Error('Watchlist switcher button not found after 10 attempts');
+
+  await hoverClick(switcherCoords.x, switcherCoords.y);
+  await new Promise(r => setTimeout(r, 1500));
+
+  // ── Schritt 5: "Liste öffnen..." im Kontextmenü finden und klicken ──
+  const openListCoords = await evaluate(`
+    (function() {
+      var all = document.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (el.children.length > 0) continue;
+        var r = el.getBoundingClientRect();
+        if (r.width < 5 || r.height < 5) continue;
+        var t = el.textContent.trim();
+        if (/^Liste öffnen|^Open list/i.test(t)) {
+          return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2), text: t };
+        }
+      }
+      return null;
+    })()
+  `);
+
+  if (!openListCoords) {
+    await pressEscape();
+    throw new Error('Menu item "Liste öffnen..." not found in context menu');
+  }
+
+  await hoverClick(openListCoords.x, openListCoords.y);
+  await new Promise(r => setTimeout(r, 2000));
+
+  // ── Schritt 6: Watchlist im Dialog finden und klicken ──
+  const itemCoords = await evaluate(`
+    (function(targetName) {
+      var upper = targetName.toUpperCase();
+      var all = document.querySelectorAll('span, div, li');
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (el.children.length > 0) continue;
+        var r = el.getBoundingClientRect();
+        if (r.width < 5 || r.height < 5) continue;
+        if (el.textContent.trim().toUpperCase() !== upper) continue;
+        // Im Dialog-Bereich? (nicht der Button-Text selbst)
+        if (r.left < 1000) continue;
+        var target = el;
+        for (var d = 0; d < 4; d++) {
+          var p = target.parentElement;
+          if (!p) break;
+          var pr = p.getBoundingClientRect();
+          if (pr.width > 80 && pr.height > 10 && pr.height < 80) { target = p; }
+        }
+        var cr = target.getBoundingClientRect();
+        return { x: Math.round(cr.left + cr.width/2), y: Math.round(cr.top + cr.height/2), matched: el.textContent.trim() };
+      }
+      var vis = [];
+      var all2 = document.querySelectorAll('span, div');
+      for (var j = 0; j < all2.length; j++) {
+        var el2 = all2[j];
+        if (el2.children.length > 0) continue;
+        var r2 = el2.getBoundingClientRect();
+        if (r2.width < 5 || r2.height < 5 || r2.left < 1000) continue;
+        var t2 = el2.textContent.trim();
+        if (t2.length > 1 && t2.length < 50) vis.push(t2);
+      }
+      return { found: false, visible: [...new Set(vis)].slice(0, 30) };
+    })(${JSON.stringify(name)})
+  `);
+
+  if (!itemCoords || itemCoords.found === false) {
+    await pressEscape();
+    throw new Error(`Watchlist "${name}" not found in dialog. Visible: ${(itemCoords?.visible ?? []).slice(0,12).join(', ')}`);
+  }
+
+  await hoverClick(itemCoords.x, itemCoords.y);
+  await new Promise(r => setTimeout(r, 1500));
+
+  return { success: true, watchlist: name };
+}
+
+/** CSS-Pin nach get() entfernen — Panel kehrt in normalen Zustand zurück */
+export async function unpinPanel() {
+  await evaluate(`
+    (function() {
+      var ra = document.querySelector('[class*="layout__area--right"]');
+      if (ra) {
+        ra.style.removeProperty('width');
+        ra.style.removeProperty('min-width');
+        ra.style.removeProperty('flex');
+      }
+    })()
+  `).catch(() => {});
+}
+
 export async function add({ symbol }) {
   // Use keyboard shortcut to open symbol search in watchlist, type symbol, press Enter
   const c = await getClient();
@@ -94,7 +302,7 @@ export async function add({ symbol }) {
       ];
       for (var s = 0; s < selectors.length; s++) {
         var btn = document.querySelector(selectors[s]);
-        if (btn && btn.offsetParent !== null) { btn.click(); return { found: true, selector: selectors[s] }; }
+        if (btn) { var br = btn.getBoundingClientRect(); if (br.width >= 5 && br.height >= 5) { btn.click(); return { found: true, selector: selectors[s] }; } }
       }
       // Fallback: find + button in right panel
       var container = document.querySelector('[class*="layout__area--right"]');

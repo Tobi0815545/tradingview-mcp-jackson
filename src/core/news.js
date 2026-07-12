@@ -7,7 +7,18 @@
  *   - Finviz news.ashx (allgemeine Markt-Headlines)
  */
 
-const TV_NEWS_URL = "https://news-headlines.tradingview.com/v2/headlines";
+const TV_NEWS_URL  = "https://news-headlines.tradingview.com/v2/headlines";
+const TV_BASE      = "https://www.tradingview.com";
+
+// Normalisiert eine News-URL:
+// - Relative Pfade → absolute TV-URL
+// - Leere/ungültige URLs → null
+function normalizeUrl(raw) {
+  if (!raw) return null;
+  if (raw.startsWith("/"))  return TV_BASE + raw;
+  if (raw.startsWith("http://") || raw.startsWith("https://")) return raw;
+  return null;
+}
 const YF_SEARCH   = "https://query2.finance.yahoo.com/v1/finance/search";
 const HEADERS_YF  = { "User-Agent": "Mozilla/5.0", "Accept": "application/json" };
 const HEADERS_TV  = {
@@ -51,7 +62,7 @@ async function fetchTVNewsForSymbol(tvSymbol, tickerDisplay, limit = 5) {
     time:      item.published   ? new Date(item.published * 1000)
              : item.publishedAt ? new Date(item.publishedAt)
              : null,
-    url:       item.link ?? item.url ?? "",
+    url:       normalizeUrl(item.link ?? item.url ?? "") ?? "",
   })).filter((n) => n.title);
 }
 
@@ -79,7 +90,7 @@ async function fetchYahooNewsForTicker(ticker, limit = 5) {
       title:     item.title     ?? "",
       publisher: item.publisher ?? "",
       time:      item.providerPublishTime ? new Date(item.providerPublishTime * 1000) : null,
-      url:       item.link      ?? "",
+      url:       normalizeUrl(item.link ?? "") ?? "",
     }));
 }
 
@@ -93,29 +104,28 @@ export async function fetchWatchlistNews(symbols = [], limit = 12) {
   if (!symbols.length) return [];
 
   const allNews = [];
-  await Promise.allSettled(
-    symbols.slice(0, 25).map(async (sym) => {
-      const tvSymbol = sym.includes(":") ? sym : `UNKNOWN:${sym}`;
-      const ticker   = sym.includes(":") ? sym.split(":").pop() : sym;
-      try {
-        // Primary: TradingView
-        const news = await fetchTVNewsForSymbol(tvSymbol, ticker, 5);
-        if (news.length > 0) {
-          allNews.push(...news);
-        } else {
-          // Fallback: Yahoo
-          const yfNews = await fetchYahooNewsForTicker(ticker, 5);
-          allNews.push(...yfNews);
-        }
-      } catch {
-        // Bei TV-Fehler: Yahoo-Fallback
+  const batch = symbols.slice(0, 25);
+  const BATCH_SIZE = 5;
+  for (let i = 0; i < batch.length; i += BATCH_SIZE) {
+    const chunk = batch.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      chunk.map(async (sym) => {
+        const tvSymbol = sym.includes(":") ? sym : `UNKNOWN:${sym}`;
+        const ticker   = sym.includes(":") ? sym.split(":").pop() : sym;
         try {
-          const yfNews = await fetchYahooNewsForTicker(ticker, 5);
-          allNews.push(...yfNews);
-        } catch { /* silent */ }
-      }
-    })
-  );
+          const news = await fetchTVNewsForSymbol(tvSymbol, ticker, 5);
+          if (news.length > 0) return news;
+          return await fetchYahooNewsForTicker(ticker, 5);
+        } catch {
+          try { return await fetchYahooNewsForTicker(ticker, 5); }
+          catch { return []; }
+        }
+      })
+    );
+    for (const r of results) {
+      if (r.status === "fulfilled" && r.value) allNews.push(...r.value);
+    }
+  }
 
   // Deduplizieren nach Titel, neueste zuerst
   const seen = new Set();
