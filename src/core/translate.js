@@ -1,4 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("translate");
 
 // ── News-Übersetzung (Englisch → Deutsch via Claude) ─────────────────────────
 
@@ -19,7 +22,7 @@ export async function translateHeadlines(newsList) {
       return newsList.map((n, i) => ({ ...n, title: translated[i] }));
     }
   } catch (e) {
-    console.warn("⚠️  News-Übersetzung fehlgeschlagen, verwende Original:", e.message);
+    log.warn("⚠️  News-Übersetzung fehlgeschlagen, verwende Original:", e.message);
   }
   return newsList;
 }
