@@ -90,7 +90,7 @@ function fmtWeekday(date) {
 // Format: { data: { initialDateFrom, entries: [ { date, event, importance, actual, forecast, previous, ticker } ] } }
 // importance: 1=niedrig, 2=mittel, 3=hoch
 
-function tickerToCountry(ticker = "") {
+export function tickerToCountry(ticker = "") {
   const t = ticker.toUpperCase();
   if (t.startsWith("UNITEDSTA") || t.startsWith("US"))     return "US";
   if (t.startsWith("EURO") || t.startsWith("EU"))          return "EU";
@@ -102,7 +102,9 @@ function tickerToCountry(ticker = "") {
   if (t.startsWith("CAN"))                                 return "CA";
   if (t.startsWith("SWI") || t.startsWith("CHE"))          return "CH";
   if (t.startsWith("AUS"))                                 return "AU";
-  return "US"; // Finviz is US-focused by default
+  // Kein US-Default mehr: ein unbekanntes Präfix ist kein Grund, das Event stillschweigend
+  // als US-Event zu deklarieren. COUNTRY_FLAGS[...] ?? "🌍" fängt das beim Rendern sauber ab.
+  return "unknown";
 }
 
 async function fetchFinvizCalendarEvents() {

@@ -30,6 +30,21 @@ const SCREENSHOT_DIR = join(dirname(dirname(__dirname_ft)), 'screenshots');
 const ACCOUNT_SIZE = 10_000;   // €10.000 Kontogröße
 const RISK_PCT     = 0.01;     // 1% Risiko pro Trade (Voigt-Regel: max. 1R riskieren)
 
+// Aktienanzahl = max. Verlust ÷ Risiko-pro-Aktie (Entry − Stop).
+// Math.max(1, ...) kann bei teuren Aktien/weiten Stops das Risikobudget sprengen (1 Aktie
+// kostet dann mehr als maxRisk) — daher IMMER den tatsächlichen Risiko-% zurückgeben statt
+// der Zielquote riskPct, und den Fall über riskExceeded sichtbar machen.
+export function computePositionSizing(entry, risk, accountSize = ACCOUNT_SIZE, riskPct = RISK_PCT) {
+  const maxRisk        = accountSize * riskPct;
+  const shares          = Math.max(1, Math.floor(maxRisk / risk));
+  const posValue        = +(shares * entry).toFixed(2);
+  const posValuePct     = +((posValue / accountSize) * 100).toFixed(1);
+  const maxLoss         = +(shares * risk).toFixed(2);
+  const actualRiskPct   = +((maxLoss / accountSize) * 100).toFixed(1);
+  const riskExceeded    = maxLoss > maxRisk;
+  return { shares, posValue, posValuePct, maxLoss, actualRiskPct, riskExceeded };
+}
+
 // ── Symbol normalisieren (Scanner-Notation → Chart-Notation) ─────────────────
 // "LSIN_DLY:0NUX" → "LSIN:0NUX"   |   "NYSE:PRY" → "NYSE:PRY"
 
@@ -783,18 +798,8 @@ export async function runFavoriteTrade(scanData) {
     if (!setup) return { success: false, error: "Setup-Berechnung fehlgeschlagen (zu wenig Daten)" };
 
     // ── Positionsgrößen-Berechnung (1% Risiko-Regel) ────────────────────────────
-    // Max. Verlust = 1% des Kontos = €100 bei €10k
-    // Aktienanzahl = max. Verlust ÷ Risiko-pro-Aktie (Entry − Stop)
-    const maxRisk     = ACCOUNT_SIZE * RISK_PCT;                // €100
-    // Math.max(1, ...) kann bei teuren Aktien/weiten Stops das Risikobudget sprengen
-    // (1 Aktie kostet dann mehr als maxRisk) — daher IMMER den tatsächlichen Risiko-%
-    // berechnen statt der Zielquote RISK_PCT und den Fall sichtbar flaggen.
-    const shares      = Math.max(1, Math.floor(maxRisk / setup.risk));
-    const posValue    = +(shares * setup.entry).toFixed(2);     // Positionswert in €
-    const posValuePct = +((posValue / ACCOUNT_SIZE) * 100).toFixed(1); // % des Kontos
-    const maxLoss     = +(shares * setup.risk).toFixed(2);      // Max. Verlust in €
-    const actualRiskPct  = +((maxLoss / ACCOUNT_SIZE) * 100).toFixed(1); // tatsächliches Risiko in %
-    const riskExceeded   = maxLoss > maxRisk;                   // 1-Aktien-Minimum sprengt Budget
+    const { shares, posValue, posValuePct, maxLoss, actualRiskPct, riskExceeded } =
+      computePositionSizing(setup.entry, setup.risk);
 
     console.log(
       `ℹ️  Positionsgröße: ${shares} Aktien × ${setup.entry.toFixed(2)} = €${posValue} ` +

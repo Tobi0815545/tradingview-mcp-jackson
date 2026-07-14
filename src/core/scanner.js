@@ -159,7 +159,7 @@ function parseRow(row, marketKey, marketLabel) {
 
 // ── CANSLIM 5-Sterne Scoring ─────────────────────────────────────────────────
 
-function scoreCandidate(c) {
+export function scoreCandidate(c) {
   let stars = 0;
   const criteria = {};
 
@@ -338,19 +338,28 @@ export async function runScan({
     })
   );
 
+  // Sortierung: Sterne → MCap (Liquidität) → 3M-Performance (auch für die Vorauswahl
+  // unten verwendet, damit deren Top-30 exakt der finalen Rangfolge entspricht)
+  const sortFn = (a, b) =>
+    (b.stars - a.stars) ||
+    ((b.market_cap ?? 0) - (a.market_cap ?? 0)) ||
+    ((b.perf_3m ?? 0) - (a.perf_3m ?? 0));
+
   // Short Float für US-Aktien via Finviz nachladen (sequentiell, 1.5s/Request).
-  // Nur die Top-30 US-Kandidaten nach Rohscore abfragen — spart >60% Zeit ohne
+  // Nur die Top-30 US-Kandidaten nach finaler Sortierung abfragen — spart >60% Zeit ohne
   // Qualitätsverlust, da Short-Float-Filter nur Grenzfälle unter den Top-5 betrifft.
-  const allUsTickers = [...new Set(allRows.filter(r => r.market === "us").map(r => r.ticker))];
+  // WICHTIG: muss mit sortFn (nicht nur "stars") sortiert werden — bei Sternen-Gleichstand
+  // (häufig, da nur 0.5er-Schritte) hätte reines Stars-Ranking sonst Kandidaten aus der
+  // Vorauswahl ausgeschlossen, die es via MCap/Perf-Tiebreak später doch in die finalen
+  // Top-5 schaffen — deren short_float bliebe dann undefined und der Filter (sf !== undefined)
+  // würde sie nie herausfiltern, egal wie hoch ihr Short Float tatsächlich ist.
+  const usRowsForSf = allRows.filter(r => r.market === "us").map(r => ({ ...r, ...scoreCandidate(r) }));
+  const allUsTickers = [...new Set(usRowsForSf.map(r => r.ticker))];
   const scoredForSf  = allUsTickers
-    .map(t => {
-      const row = allRows.find(r => r.ticker === t && r.market === "us");
-      const { stars } = row ? scoreCandidate(row) : { stars: 0 };
-      return { t, stars };
-    })
-    .sort((a, b) => b.stars - a.stars)
+    .map(t => usRowsForSf.find(r => r.ticker === t))
+    .sort(sortFn)
     .slice(0, 30)
-    .map(x => x.t);
+    .map(r => r.ticker);
   const shortFloats = scoredForSf.length > 0 ? await fetchShortFloats(scoredForSf) : new Map();
 
   // Short Float eintragen + US-Aktien mit Short Float > MAX_SHORT_FLOAT herausfiltern
@@ -401,12 +410,6 @@ export async function runScan({
       if (preferUs || betterScore || betterPerf) seen.set(key, c);
     }
   }
-
-  // Sortierung: Sterne → MCap (Liquidität) → 3M-Performance
-  const sortFn = (a, b) =>
-    (b.stars - a.stars) ||
-    ((b.market_cap ?? 0) - (a.market_cap ?? 0)) ||
-    ((b.perf_3m ?? 0) - (a.perf_3m ?? 0));
 
   const toResult = (c, idx) => ({
     rank:          idx + 1,
