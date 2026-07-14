@@ -83,6 +83,21 @@ async function expandWatchlistPanel() {
   return true;
 }
 
+// Pollt evaluate(checkExpr) bis truthy oder maxMs erreicht ist, statt blind maxMs zu warten.
+// Gleiche Zeitobergrenze wie ein fester setTimeout(maxMs), aber schnelleres Fortfahren
+// sobald der DOM-Zustand tatsächlich bereit ist (vermeidet Race-Conditions bei langsamem
+// Rendering UND unnötige Verzögerung im Normalfall). Poll-Intervall 200ms wie in wait.js.
+async function pollUntil(checkExpr, maxMs, intervalMs = 200) {
+  const deadline = Date.now() + maxMs;
+  let result = null;
+  while (Date.now() < deadline) {
+    result = await evaluate(checkExpr);
+    if (result) return result;
+    await new Promise(r => setTimeout(r, intervalMs));
+  }
+  return result;
+}
+
 export async function switchTo({ name }) {
   const { getClient } = await import('../connection.js');
 
@@ -137,7 +152,10 @@ export async function switchTo({ name }) {
     }
     // base klicken → Watchlist-Tab öffnen
     await evaluate(`document.querySelector('[data-name="base"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
-    await new Promise(r => setTimeout(r, 1500));
+    await pollUntil(
+      `!!(document.querySelector('[data-name="watchlists-button"]') && document.querySelector('[data-name="watchlists-button"]').getBoundingClientRect().width > 5)`,
+      1500,
+    );
   }
 
   // ── Schritt 3: Prüfen ob gewünschte Watchlist bereits aktiv ist ──
@@ -180,7 +198,20 @@ export async function switchTo({ name }) {
   if (!switcherCoords) throw new Error('Watchlist switcher button not found after 10 attempts');
 
   await hoverClick(switcherCoords.x, switcherCoords.y);
-  await new Promise(r => setTimeout(r, 1500));
+  await pollUntil(
+    `(function() {
+      var all = document.querySelectorAll('*');
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (el.children.length > 0) continue;
+        var r = el.getBoundingClientRect();
+        if (r.width < 5 || r.height < 5) continue;
+        if (/^Liste öffnen|^Open list/i.test(el.textContent.trim())) return true;
+      }
+      return false;
+    })()`,
+    1500,
+  );
 
   // ── Schritt 5: "Liste öffnen..." im Kontextmenü finden und klicken ──
   const openListCoords = await evaluate(`
@@ -206,7 +237,19 @@ export async function switchTo({ name }) {
   }
 
   await hoverClick(openListCoords.x, openListCoords.y);
-  await new Promise(r => setTimeout(r, 2000));
+  await pollUntil(
+    `(function() {
+      var all = document.querySelectorAll('span, div');
+      for (var i = 0; i < all.length; i++) {
+        var el = all[i];
+        if (el.children.length > 0) continue;
+        var r = el.getBoundingClientRect();
+        if (r.width >= 5 && r.height >= 5 && r.left >= 1000) return true;
+      }
+      return false;
+    })()`,
+    2000,
+  );
 
   // ── Schritt 6: Watchlist im Dialog finden und klicken ──
   const itemCoords = await evaluate(`

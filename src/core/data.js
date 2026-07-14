@@ -311,14 +311,29 @@ export async function getDepth() {
       }
       bids.sort(function(a, b) { return b.price - a.price; });
       asks.sort(function(a, b) { return a.price - b.price; });
+      var swapped = false;
+      // Plausibilitätsprüfung: in einem echten Orderbuch ist bestAsk immer > bestBid.
+      // Die Zuordnung oben nutzt bei fehlenden bid/ask-CSS-Klassen einen positionalen
+      // Fallback (obere Hälfte = Ask, untere = Bid) — ändert sich das DOM-Layout, würde
+      // das sonst still vertauschte Bid/Ask-Werte liefern. Erkennbar an einem "gekreuzten"
+      // Buch (bestAsk < bestBid), was real praktisch nie vorkommt — dann tauschen.
+      if (asks.length > 0 && bids.length > 0 && asks[0].price < bids[0].price) {
+        var tmp = bids; bids = asks; asks = tmp;
+        bids.sort(function(a, b) { return b.price - a.price; });
+        asks.sort(function(a, b) { return a.price - b.price; });
+        swapped = true;
+      }
       var spread = null;
       if (asks.length > 0 && bids.length > 0) spread = +(asks[0].price - bids[0].price).toFixed(6);
-      return { found: true, bids: bids, asks: asks, spread: spread };
+      return { found: true, bids: bids, asks: asks, spread: spread, swapped: swapped };
     })()
   `);
 
   if (!data || !data.found) throw new Error(data?.error || 'DOM panel not found.');
-  return { success: true, bid_levels: data.bids?.length || 0, ask_levels: data.asks?.length || 0, spread: data.spread, bids: data.bids || [], asks: data.asks || [], raw_values: data.raw_values, note: data.note };
+  const note = data.swapped
+    ? [data.note, 'Bid/Ask-Klassifizierung wirkte invertiert (bestAsk < bestBid) und wurde automatisch getauscht — DOM-Layout ggf. geändert, Werte mit Vorsicht behandeln.'].filter(Boolean).join(' ')
+    : data.note;
+  return { success: true, bid_levels: data.bids?.length || 0, ask_levels: data.asks?.length || 0, spread: data.spread, bids: data.bids || [], asks: data.asks || [], raw_values: data.raw_values, note, swapped: !!data.swapped };
 }
 
 export async function getStudyValues() {
