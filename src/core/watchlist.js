@@ -252,6 +252,13 @@ export async function switchTo({ name }) {
   );
 
   // ── Schritt 6: Watchlist im Dialog finden und klicken ──
+  // WICHTIG: auf die Koordinaten des gefundenen Leaf-Elements selbst klicken, NICHT auf
+  // einen hochgewanderten Elternknoten. Bei Zeilen mit Zusatz-UI (z.B. "hasExpand"-Klasse
+  // bei Options-verknüpften Watchlists, die einen "Mehr über Optionen"-Button einblenden)
+  // ist die Zeile breiter als der Text — das Zentrum eines hochgewanderten Elternknotens
+  // landet dann auf einem unsichtbaren Backdrop-Overlay statt auf der eigentlichen Zeile,
+  // wodurch der Klick registriert wird (kein Fehler), aber die Watchlist NICHT wechselt.
+  // Ein Klick auf den Text selbst bubbled im DOM zuverlässig zum Row-Click-Handler.
   const itemCoords = await evaluate(`
     (function(targetName) {
       var upper = targetName.toUpperCase();
@@ -264,15 +271,7 @@ export async function switchTo({ name }) {
         if (el.textContent.trim().toUpperCase() !== upper) continue;
         // Im Dialog-Bereich? (nicht der Button-Text selbst)
         if (r.left < 1000) continue;
-        var target = el;
-        for (var d = 0; d < 4; d++) {
-          var p = target.parentElement;
-          if (!p) break;
-          var pr = p.getBoundingClientRect();
-          if (pr.width > 80 && pr.height > 10 && pr.height < 80) { target = p; }
-        }
-        var cr = target.getBoundingClientRect();
-        return { x: Math.round(cr.left + cr.width/2), y: Math.round(cr.top + cr.height/2), matched: el.textContent.trim() };
+        return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2), matched: el.textContent.trim() };
       }
       var vis = [];
       var all2 = document.querySelectorAll('span, div');
