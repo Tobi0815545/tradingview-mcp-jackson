@@ -10,13 +10,17 @@ import { runVoigtAnalysis } from "../../src/core/voigt-analysis.js";
 
 // Auto-extracted aus daily-brief-email.js — Top-Level HTML-Composer für den gesamten Brief
 
-export function formatHtml(data, scanData, marketData, calData, mode = "daily", rsHistory = null, stage2Map = null, weeklyPerfMap = null, wlNews = null, rsiMap = null, ivMap = null, lochnerData = null, tradermacherData = null, favoriteTradeData = null, isSlim = false) {
+export function formatHtml(data, scanData, marketData, calData, mode = "daily", rsHistory = null, stage2Map = null, weeklyPerfMap = null, wlNews = null, rsiMap = null, ivMap = null, lochnerData = null, tradermacherData = null, favoriteTradeData = null, isSlim = false, fetchErrors = {}) {
   const date = new Date(data.generated_at).toLocaleDateString("de-DE", {
     weekday: "long", year: "numeric", month: "long", day: "numeric",
   });
   const time = new Date(data.generated_at).toLocaleTimeString("de-DE");
   const isFriday = new Date().getDay() === 5;
   const stage2Info = calcStage2Info(data.symbols_scanned || [], stage2Map);
+
+  // Sichtbarer Hinweis wenn ein Datenabruf fehlgeschlagen ist (nicht von "echt leer"
+  // unterscheidbar, wenn wir hier nicht explizit warnen — siehe fetchErrors in daily-brief-email.js)
+  const fetchWarning = (label) => ` &nbsp;·&nbsp; <span style="color:#d97706;font-weight:700">⚠️ ${label} nicht abrufbar</span>`;
 
   // Wochenrückblick (Freitag) vorbereiten
   const weeklyPerfHtml = isFriday && weeklyPerfMap?.size
@@ -241,7 +245,7 @@ export function formatHtml(data, scanData, marketData, calData, mode = "daily", 
 
   <div class="card">
     <h2>📅 Wochenkalender</h2>
-    <p class="sub" style="margin-bottom:10px">KW ab ${calData?.week_label ?? ""} · Wichtige Makro-Ereignisse &amp; Watchlist-Earnings</p>
+    <p class="sub" style="margin-bottom:10px">KW ab ${calData?.week_label ?? ""} · Wichtige Makro-Ereignisse &amp; Watchlist-Earnings${fetchErrors.calendar ? fetchWarning("Kalender") : ""}</p>
     ${formatCalendarHtml(calData)}
   </div>
 
@@ -250,6 +254,10 @@ export function formatHtml(data, scanData, marketData, calData, mode = "daily", 
     <p class="sub">Watchlist: <strong>${data.watchlist_name || "–"}</strong> &nbsp;·&nbsp; ${(data.symbols_scanned || []).length} Symbole
     ${stage2Info ? ` &nbsp;·&nbsp; <span style="font-weight:700;color:${stage2Info.pct >= 70 ? "#16a34a" : stage2Info.pct >= 40 ? "#d97706" : "#dc2626"}">Stage-2-Health: ${stage2Info.count}/${stage2Info.total} (${stage2Info.pct}%)</span>` : ""}
     ${data.watchlist_source === "cache" ? ` &nbsp;·&nbsp; <span style="color:#d97706;font-weight:700">⚠️ Cache-Daten (TradingView nicht erreichbar)</span>` : ""}
+    ${fetchErrors.stage2 ? fetchWarning("Stage-2-Daten") : ""}
+    ${fetchErrors.rsi ? fetchWarning("RSI-Daten") : ""}
+    ${fetchErrors.iv ? fetchWarning("Options-IV-Daten") : ""}
+    ${isFriday && fetchErrors.weeklyPerf ? fetchWarning("Wochenrückblick") : ""}
     </p>
 
     <table class="brief-table">
@@ -282,10 +290,10 @@ export function formatHtml(data, scanData, marketData, calData, mode = "daily", 
     ${isFriday && weeklyPerfHtml ? weeklyPerfHtml : ""}
   </div>
 
-  ${wlNews?.length ? `
+  ${(wlNews?.length || fetchErrors.news) ? `
   <div class="card">
     <h2>📰 Breaking News – Watchlist</h2>
-    <p class="sub" style="margin-bottom:8px">Aktuellste Meldungen zu deinen Watchlist-Werten</p>
+    <p class="sub" style="margin-bottom:8px">Aktuellste Meldungen zu deinen Watchlist-Werten${fetchErrors.news ? fetchWarning("News") : ""}</p>
     ${formatWatchlistNewsHtml(wlNews)}
   </div>` : ""}
 

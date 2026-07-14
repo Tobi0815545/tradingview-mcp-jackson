@@ -219,6 +219,21 @@ if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
     const ivMap      = ivResult.status === "fulfilled"        ? ivResult.value        : new Map();
     const favTradeData   = favTradeResult.status === "fulfilled" ? favTradeResult.value : null;
 
+    // Ein leerer Map/Array ist von einem fehlgeschlagenen Fetch nicht zu unterscheiden,
+    // ohne den Rejection-Status separat zu tracken — daher hier explizit festhalten und
+    // im Brief sichtbar flaggen (formatHtml/fetchWarning), statt still "0 Ergebnisse" zu zeigen.
+    const fetchErrors = {
+      calendar:   calResult.status === "rejected",
+      stage2:     stage2Result.status === "rejected",
+      weeklyPerf: weeklyPerfResult.status === "rejected",
+      news:       wlNewsResult.status === "rejected",
+      rsi:        rsiResult.status === "rejected",
+      iv:         ivResult.status === "rejected",
+    };
+    for (const [key, failed] of Object.entries(fetchErrors)) {
+      if (failed) console.warn(`⚠️  Fetch fehlgeschlagen: ${key}`);
+    }
+
     console.log(`✅ RSI: ${rsiMap?.size ?? 0} Werte via TV Scanner.`);
     console.log(`✅ Options-IV: ${ivMap?.size / 2 ?? 0} Symbole mit IV-Daten.`);
     if (calData) {
@@ -264,7 +279,7 @@ if (!process.env.GMAIL_USER || !process.env.GMAIL_APP_PASSWORD) {
 
     console.log(`✅ Brief: ${count} Symbole. Sende Email…`);
 
-    const html = formatHtml(data, scanData, marketData, calData, MODE, rsHistory, stage2Map, weeklyPerf, wlNewsDE, rsiMap, ivMap, lochnerData, tradermacherData, favTradeData, IS_SLIM);
+    const html = formatHtml(data, scanData, marketData, calData, MODE, rsHistory, stage2Map, weeklyPerf, wlNewsDE, rsiMap, ivMap, lochnerData, tradermacherData, favTradeData, IS_SLIM, fetchErrors);
     await sendEmail(html, count, marketData?.regime, MODE, IS_SLIM ? null : favTradeData);
     console.log(`✅ Email erfolgreich an ${RECIPIENT} gesendet.`);
 
