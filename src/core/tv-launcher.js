@@ -14,6 +14,32 @@ export async function isCdpAlive() {
   }
 }
 
+// CDP() ohne explizites `target` verbindet sich mit dem ERSTEN Eintrag aus
+// /json/list — das kann der Splash-Screen oder ein anderes totes Renderer-Target
+// sein, dessen WebSocket zwar öffnet, aber auf keinen Protokoll-Befehl mehr
+// antwortet (dann hängt jeder await für immer). Deshalb explizit das
+// Chart-Page-Target suchen und zusätzlich gegen einen Timeout racen.
+async function findChartTargetId(timeoutMs = 3000) {
+  try {
+    const res = await fetch(`http://127.0.0.1:9222/json/list`, { signal: AbortSignal.timeout(timeoutMs) });
+    const targets = await res.json();
+    return targets.find((t) => t.type === "page" && /tradingview\.com\/chart/.test(t.url || ""))?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function connectCdp(opts = {}, timeoutMs = 10_000) {
+  const { default: CDP } = await import("chrome-remote-interface");
+  const target = opts.target ?? (await findChartTargetId());
+  return Promise.race([
+    CDP({ port: 9222, ...(target ? { target } : {}), ...opts }),
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`CDP-Connect nach ${timeoutMs}ms nicht bereit.`)), timeoutMs)
+    ),
+  ]);
+}
+
 export async function activateTradingView() {
   if (process.platform !== "darwin") return;
   try {
@@ -50,8 +76,8 @@ export async function ensureTradingViewRunning() {
   });
   tv.unref();
 
-  // Warten bis CDP antwortet (max. 60 Sekunden)
-  const deadline = Date.now() + 60_000;
+  // Warten bis CDP antwortet (max. 120 Sekunden)
+  const deadline = Date.now() + 120_000;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, 2000));
     if (await isCdpAlive()) {
@@ -67,7 +93,7 @@ export async function ensureTradingViewRunning() {
     }
     process.stdout.write(".");
   }
-  throw new Error("TradingView hat CDP nach 60 Sekunden nicht geöffnet.");
+  throw new Error("TradingView hat CDP nach 120 Sekunden nicht geöffnet.");
 }
 
 /**
@@ -76,7 +102,6 @@ export async function ensureTradingViewRunning() {
  * Layout automatisch aus dem Supercharts-Menü geöffnet.
  */
 export async function ensureChartLoaded(maxWaitMs = 60_000) {
-  const { default: CDP } = await import("chrome-remote-interface");
   let client;
 
   // Hilfsfunktion: frische CDP-Verbindung herstellen (mit Retry nach Seiten-Navigation)
@@ -84,7 +109,7 @@ export async function ensureChartLoaded(maxWaitMs = 60_000) {
     for (let i = 0; i < retries; i++) {
       try {
         if (client) { try { await client.close(); } catch {} client = null; }
-        client = await CDP({ port: 9222 });
+        client = await connectCdp();
         return true;
       } catch { await new Promise(r => setTimeout(r, delayMs)); }
     }
@@ -157,7 +182,7 @@ export async function ensureChartLoaded(maxWaitMs = 60_000) {
     while (Date.now() < deadline) {
       try {
         if (!client) {
-          client = await CDP({ port: 9222 });
+          client = await connectCdp();
           await client.Runtime.enable();
         }
         const { result: ready } = await client.Runtime.evaluate({
@@ -201,13 +226,12 @@ export async function ensureChartLoaded(maxWaitMs = 60_000) {
  *  und watchlists-button nur kurz sichtbar ist wenn das Panel offen ist.
  */
 export async function waitForUiReady(maxMs = 45_000) {
-  const { default: CDP } = await import("chrome-remote-interface");
   const deadline = Date.now() + maxMs;
   let client;
   try {
     while (Date.now() < deadline) {
       try {
-        if (!client) client = await CDP({ port: 9222 });
+        if (!client) client = await connectCdp();
         const { result } = await client.Runtime.evaluate({
           expression: `!!document.querySelector('[data-name="pane-canvas"]')`,
           returnByValue: true,
