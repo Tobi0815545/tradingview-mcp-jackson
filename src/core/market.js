@@ -367,17 +367,19 @@ function weekPerfFromJson(json) {
   const meta   = json?.chart?.result?.[0]?.meta ?? {};
   const closes = (json?.chart?.result?.[0]?.indicators?.quote?.[0]?.close ?? []).filter((c) => c != null);
 
-  // Wochenperformance: ältester Close der 5d-Periode → aktueller Preis (= 5-Handelstage-Rolling)
   const price = meta.regularMarketPrice ?? closes[closes.length - 1] ?? null;
-  const perfW = closes.length >= 2
-    ? ((price - closes[0]) / closes[0]) * 100
+
+  // Wochenperformance: chartPreviousClose = Close VOR der 5d-Periode = letzter Freitags-Close.
+  // Entspricht der Kalender-Woche (Fr→Fr) und stimmt mit Finviz überein.
+  // Früher: closes[0] (= Montags-Close) → fehlerhaft wenn Mo einen Gap hatte.
+  const weekBase = meta.chartPreviousClose ?? (closes.length >= 2 ? closes[0] : null);
+  const perfW = price != null && weekBase != null && weekBase !== 0
+    ? ((price - weekBase) / weekBase) * 100
     : null;
 
-  // Tagesperformance: aktueller Preis vs. gestiger Close (= vorletzter Bar)
-  // closes[-2] = gestern, schlägt chartPreviousClose (= Close vor der gesamten Periode, NICHT gestern!)
-  const prevClose = closes.length >= 2
-    ? closes[closes.length - 2]
-    : null;
+  // Tagesperformance: aktueller Preis vs. gestrigem Close (= vorletzter Bar in 5d-Daten).
+  // closes.at(-2) = gestern; chartPreviousClose ist der Close VOR der gesamten Periode (= letzter Freitag), NICHT gestern.
+  const prevClose = closes.length >= 2 ? closes[closes.length - 2] : null;
   const perfD = price != null && prevClose != null && prevClose !== 0
     ? ((price - prevClose) / prevClose) * 100
     : null;
