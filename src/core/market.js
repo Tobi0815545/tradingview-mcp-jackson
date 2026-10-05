@@ -10,7 +10,7 @@ const TV_SCANNER = "https://scanner.tradingview.com";
 
 const WATCH_SYMBOLS = [
   // USA
-  { symbol: "TVC:DJI",     label: "Dow Jones",    short: "DJI",    flag: "🇺🇸", type: "index" },
+  { symbol: "DJ:DJI",      label: "Dow Jones",    short: "DJI",    flag: "🇺🇸", type: "index" },
   { symbol: "CBOE:SPX",    label: "S&P 500",      short: "SPX",    flag: "🇺🇸", type: "index" },
   { symbol: "NASDAQ:NDX",  label: "Nasdaq 100",   short: "NDX",    flag: "🇺🇸", type: "index" },
   { symbol: "TVC:RUT",     label: "Russell 2000", short: "RUT",    flag: "🇺🇸", type: "index" },
