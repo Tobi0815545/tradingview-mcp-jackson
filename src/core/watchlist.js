@@ -131,7 +131,7 @@ export async function switchTo({ name }) {
   // ── Schritt 2: Watchlist-Panel öffnen ──
   // dispatchEvent('click') öffnet das Panel, aber zeigt ggf. den zuletzt aktiven Tab (z.B. Chats).
   // Wir müssen sicherstellen, dass der Watchlist-Tab aktiv ist.
-  for (let panelAttempt = 0; panelAttempt < 3; panelAttempt++) {
+  for (let panelAttempt = 0; panelAttempt < 6; panelAttempt++) {
     // Prüfe ob Watchlist-Tab bereits sichtbar
     const wlCheck = await evaluate(`
       (function() {
@@ -154,7 +154,7 @@ export async function switchTo({ name }) {
     await evaluate(`document.querySelector('[data-name="base"]')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))`);
     await pollUntil(
       `!!(document.querySelector('[data-name="watchlists-button"]') && document.querySelector('[data-name="watchlists-button"]').getBoundingClientRect().width > 5)`,
-      1500,
+      4000,
     );
   }
 

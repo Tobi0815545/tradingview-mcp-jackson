@@ -107,7 +107,18 @@ export async function runBrief({ rules_path } = {}) {
   // If watchlist_name is set, switch to that TradingView watchlist and read symbols from it
   if (watchlist_name) {
     try {
-      await watchlistCore.switchTo({ name: watchlist_name });
+      // Kaltstart: Sidebar rendert ggf. erst spät → switchTo bis zu 3× versuchen
+      for (let attempt = 1; ; attempt++) {
+        try {
+          await watchlistCore.switchTo({ name: watchlist_name });
+          break;
+        } catch (e) {
+          if (attempt >= 3) throw e;
+          console.warn(`⚠️  Watchlist-Wechsel Versuch ${attempt}/3 fehlgeschlagen (${e.message}) — neuer Versuch…`);
+          await unpinPanel().catch(() => {});
+          await new Promise((r) => setTimeout(r, 5000));
+        }
+      }
       const wlData = await watchlistCore.get();
       await unpinPanel(); // CSS-Pin entfernen nachdem Symbole gelesen wurden
       if (wlData.symbols && wlData.symbols.length > 0) {
