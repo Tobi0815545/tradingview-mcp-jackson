@@ -11,7 +11,7 @@ const TV_SCANNER = "https://scanner.tradingview.com";
 const WATCH_SYMBOLS = [
   // USA
   { symbol: "DJ:DJI",      label: "Dow Jones",    short: "DJI",    flag: "🇺🇸", type: "index" },
-  { symbol: "CBOE:SPX",    label: "S&P 500",      short: "SPX",    flag: "🇺🇸", type: "index" },
+  { symbol: "SP:SPX",      label: "S&P 500",      short: "SPX",    flag: "🇺🇸", type: "index" },
   { symbol: "NASDAQ:NDX",  label: "Nasdaq 100",   short: "NDX",    flag: "🇺🇸", type: "index" },
   { symbol: "TVC:RUT",     label: "Russell 2000", short: "RUT",    flag: "🇺🇸", type: "index" },
   // Europa
@@ -42,27 +42,36 @@ const COLUMNS = [
 async function fetchIndexData() {
   const tickers = WATCH_SYMBOLS.map((s) => s.symbol);
 
-  const res = await fetch(`${TV_SCANNER}/global/scan`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      symbols: { tickers },
-      columns: COLUMNS,
-    }),
-    signal: AbortSignal.timeout(12_000),
-  });
+  // Scanner liefert gelegentlich keine Zeile für einzelne Symbole → 1× nach 2s wiederholen
+  let bySymbol;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    const res = await fetch(`${TV_SCANNER}/global/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        symbols: { tickers },
+        columns: COLUMNS,
+      }),
+      signal: AbortSignal.timeout(12_000),
+    });
 
-  if (!res.ok) {
-    const txt = await res.text().catch(() => "");
-    throw new Error(`HTTP ${res.status}: ${txt.slice(0, 80)}`);
-  }
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}: ${txt.slice(0, 80)}`);
+    }
 
-  const json = await res.json();
+    const json = await res.json();
 
-  // Ergebnis als Map aufbauen (Symbol → Daten-Array)
-  const bySymbol = new Map();
-  for (const row of json.data || []) {
-    bySymbol.set(row.s, row.d || []);
+    // Ergebnis als Map aufbauen (Symbol → Daten-Array)
+    bySymbol = new Map();
+    for (const row of json.data || []) {
+      bySymbol.set(row.s, row.d || []);
+    }
+
+    const missing = tickers.filter((t) => bySymbol.get(t)?.[0] == null);
+    if (!missing.length) break;
+    console.warn(`[Market] Scanner ohne Kurs für ${missing.join(", ")} (Versuch ${attempt}/2)`);
+    if (attempt < 2) await new Promise((r) => setTimeout(r, 2000));
   }
 
   return WATCH_SYMBOLS.map(({ symbol, label, short, flag, type }) => {
