@@ -168,8 +168,14 @@ export async function runBrief({ rules_path } = {}) {
   // Helper: extrahiert Ticker-Teil aus Symbol (z.B. "NASDAQ:AAPL" → "AAPL", "AAPL" → "AAPL")
   const tickerOf = (s) => (s || "").split(":").pop().toUpperCase();
 
+  const SYMBOL_TIMEOUT_MS = 45_000;
+
   for (const symbol of watchlist) {
+    // Pro-Symbol-Timeout: hängt ein CDP-Aufruf, wird das Symbol übersprungen statt den ganzen Brief zu blockieren
+    let timedOut = false;
+    let symbolTimer;
     try {
+      await Promise.race([(async () => {
       await chart.setSymbol({ symbol });
       // 3s warten: Watchlist mit 20+ Symbolen braucht etwas mehr Ladezeit pro Symbol
       await new Promise((r) => setTimeout(r, 3000));
@@ -230,8 +236,8 @@ export async function runBrief({ rules_path } = {}) {
         const retryTicker = tickerOf(retryState?.symbol);
         if (retryTicker !== expectedTicker) {
           console.warn(`[Brief] Symbol-Mismatch nach Retry: ${symbol} → ${retryState?.symbol} — überspringe.`);
-          results.push({ symbol, error: `Symbol-Mismatch: Chart zeigt ${retryState?.symbol}` });
-          continue;
+          if (!timedOut) results.push({ symbol, error: `Symbol-Mismatch: Chart zeigt ${retryState?.symbol}` });
+          return;
         }
         const retryMansfield = (retryIndicators?.studies || []).find(s => s.name?.includes('Mansfield'));
         const retryMansRS = typeof Object.values(retryMansfield?.values || {})[0] === 'number'
@@ -240,16 +246,16 @@ export async function runBrief({ rules_path } = {}) {
         const retryMacdH = typeof Object.values(retryMacdStudy?.values || {})[0] === 'number'
           ? Object.values(retryMacdStudy.values)[0] : null;
         const retryVoigt = runVoigtAnalysis({ dailyBars: retryBars, stage2: false, mansRS: retryMansRS, macdH: retryMacdH });
-        results.push({
+        if (!timedOut) results.push({
           symbol,
           daily: { timeframe: default_timeframe, state: retryState, indicators: retryIndicators, ohlcv_summary: retryOhlcv, ohlcv_bars: retryBars, quote: retryQuote },
           voigt: retryVoigt,
         });
-        continue;
+        return;
       }
       // ── Ende Symbol-Verifikation ─────────────────────────────────────────────
 
-      results.push({
+      if (!timedOut) results.push({
         symbol,
         daily: {
           timeframe: default_timeframe,
@@ -261,8 +267,17 @@ export async function runBrief({ rules_path } = {}) {
         },
         voigt,
       });
+      })(), new Promise((_, reject) => {
+        symbolTimer = setTimeout(() => {
+          timedOut = true;
+          reject(new Error(`Timeout nach ${SYMBOL_TIMEOUT_MS / 1000}s`));
+        }, SYMBOL_TIMEOUT_MS);
+      })]);
     } catch (err) {
+      if (timedOut) console.warn(`⚠️  [Brief] ${symbol}: ${err.message} — überspringe.`);
       results.push({ symbol, error: err.message });
+    } finally {
+      clearTimeout(symbolTimer);
     }
   }
 
